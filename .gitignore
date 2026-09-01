@@ -1,0 +1,11 @@
+# Node / Next.js (今後の本実装フェーズ用)
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db

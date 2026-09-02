@@ -68,6 +68,22 @@ export async function resolveInquiryApi(id: string, user: User): Promise<void> {
   if (!res.ok) throw new Error("操作に失敗しました");
 }
 
+export interface ChatAnswer {
+  text: string;
+  denied: boolean;
+  cites: { id: string; title: string }[];
+}
+
+export async function askChatApi(question: string): Promise<ChatAnswer> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!res.ok) throw new Error("AIチャットの応答取得に失敗しました");
+  return res.json();
+}
+
 export async function importPageApi(input: { categoryId: string; title: string; body: string }, user: User): Promise<{ pageId: string }> {
   const res = await fetch("/api/import", {
     method: "POST",

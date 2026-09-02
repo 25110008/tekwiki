@@ -3,8 +3,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./providers";
-import { useAppData } from "./data-provider";
-import { answerQuestion, CHAT_SUGGESTIONS } from "@/lib/chat";
+import { CHAT_SUGGESTIONS } from "@/lib/chat";
+import { askChatApi } from "@/lib/client-api";
 import { BrandMark } from "@/components/BrandMark";
 
 interface ChatMessage {
@@ -29,21 +29,29 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [log, setLog] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [thinking, setThinking] = useState(false);
   const { user } = useAuth();
-  const { data } = useAppData();
   const router = useRouter();
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [log, open]);
+  }, [log, open, thinking]);
 
-  function send(text: string) {
+  async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed) return;
-    const answer = answerQuestion(trimmed, data.glossary, data.pages, user);
-    setLog((prev) => [...prev, { role: "user", text: trimmed }, { role: "ai", ...answer }]);
+    if (!trimmed || thinking) return;
+    setLog((prev) => [...prev, { role: "user", text: trimmed }]);
     setInput("");
+    setThinking(true);
+    try {
+      const answer = await askChatApi(trimmed);
+      setLog((prev) => [...prev, { role: "ai", ...answer }]);
+    } catch {
+      setLog((prev) => [...prev, { role: "ai", text: "エラーが発生しました。時間をおいて再度お試しください。", cites: [] }]);
+    } finally {
+      setThinking(false);
+    }
   }
 
   function openPage(pageId: string) {
@@ -62,7 +70,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               <BrandMark size={30} />
               <div className="flex-1">
                 <div className="font-medium text-sm">テクWiki AI</div>
-                <div className="text-ink-faint text-[0.74rem]">閉域環境のみで動作・社外送信なし</div>
+                <div className="text-ink-faint text-[0.74rem]">Cloudflare Workers AIを使用・学習データには利用されません</div>
               </div>
               <button onClick={() => setOpen(false)} className="text-ink-faint hover:text-ink text-xl leading-none px-1">
                 ×
@@ -105,6 +113,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                   )
                 )
               )}
+              {thinking && (
+                <div className="self-start max-w-[90%] rounded-m px-3.5 py-2.5 text-[0.88rem] bg-surface-2 text-ink-faint border border-border">
+                  考えています...
+                </div>
+              )}
             </div>
 
             {log.length === 0 && (
@@ -113,7 +126,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                   <button
                     key={s}
                     onClick={() => send(s)}
-                    className="text-[0.78rem] border border-border rounded-full px-3 py-1.5 hover:bg-surface-2"
+                    disabled={thinking}
+                    className="text-[0.78rem] border border-border rounded-full px-3 py-1.5 hover:bg-surface-2 disabled:opacity-60"
                   >
                     {s}
                   </button>
@@ -128,10 +142,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") send(input);
                 }}
+                disabled={thinking}
                 placeholder="質問を入力..."
-                className="flex-1 border border-border rounded-s px-3 py-2 text-sm bg-surface-1"
+                className="flex-1 border border-border rounded-s px-3 py-2 text-sm bg-surface-1 disabled:opacity-60"
               />
-              <button onClick={() => send(input)} className="bg-accent text-white rounded-s px-3.5 py-2 text-sm font-medium hover:bg-accent-strong">
+              <button
+                onClick={() => send(input)}
+                disabled={thinking}
+                className="bg-accent text-white rounded-s px-3.5 py-2 text-sm font-medium hover:bg-accent-strong disabled:opacity-60"
+              >
                 送信
               </button>
             </div>

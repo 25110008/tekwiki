@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Noto_Serif_JP, IBM_Plex_Sans_JP, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./providers";
+import { DataProvider } from "./data-provider";
 
 const notoSerifJP = Noto_Serif_JP({
   variable: "--font-noto-serif-jp",
@@ -35,7 +36,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col bg-bg text-ink">
         <AuthProvider>
-          <Suspense fallback={null}>{children}</Suspense>
+          <DataProvider>
+            <Suspense fallback={null}>{children}</Suspense>
+          </DataProvider>
         </AuthProvider>
       </body>
     </html>

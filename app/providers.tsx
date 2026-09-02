@@ -1,19 +1,18 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ORG_DOMAIN, USERS } from "@/lib/mock-data";
 import type { User } from "@/lib/types";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => { ok: boolean; error?: string };
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const STORAGE_KEY = "tekwiki:userId";
+const STORAGE_KEY = "tekwiki:user";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -21,9 +20,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const savedId = localStorage.getItem(STORAGE_KEY);
-      const found = USERS.find((u) => u.id === savedId);
-      if (found) setUser(found);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setUser(JSON.parse(raw));
     } catch {
       // localStorage unavailable — 未ログイン状態のまま
     } finally {
@@ -31,25 +29,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  function login(email: string, password: string): { ok: boolean; error?: string } {
+  async function login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
     const trimmed = email.trim();
-    const domain = trimmed.split("@")[1];
-    if (!trimmed || !domain) return { ok: false, error: "メールアドレスを入力してください" };
-    if (domain.toLowerCase() !== ORG_DOMAIN) {
-      return { ok: false, error: `組織のメールアドレス（@${ORG_DOMAIN}）でログインしてください` };
-    }
+    if (!trimmed) return { ok: false, error: "メールアドレスを入力してください" };
     if (!password) return { ok: false, error: "パスワードを入力してください" };
 
-    const local = trimmed.split("@")[0].toLowerCase();
-    const match = USERS.find((u) => local.includes(u.id) || u.id.includes(local));
-    const resolved = match ?? USERS[0];
-    setUser(resolved);
     try {
-      localStorage.setItem(STORAGE_KEY, resolved.id);
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed, password }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string; user?: User };
+      if (!json.ok || !json.user) {
+        return { ok: false, error: json.error ?? "ログインできませんでした" };
+      }
+      setUser(json.user);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(json.user));
+      } catch {
+        // ignore
+      }
+      return { ok: true };
     } catch {
-      // ignore
+      return { ok: false, error: "サーバーに接続できませんでした" };
     }
-    return { ok: true };
   }
 
   function logout() {

@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers";
-import { CATEGORIES, PAGES } from "@/lib/mock-data";
+import { useAppData } from "@/app/data-provider";
 import { canView } from "@/lib/wiki";
 import { BrandMark } from "./BrandMark";
 import type { Page } from "@/lib/types";
 
-function OutlineNode({ page, depth }: { page: Page; depth: number }) {
+function OutlineNode({ page, depth, pages }: { page: Page; depth: number; pages: Page[] }) {
   const { user } = useAuth();
   const pathname = usePathname();
-  const kids = PAGES.filter((c) => c.parentId === page.id && !c.archived).filter((c) => canView(c, user));
+  const kids = pages.filter((c) => c.parentId === page.id && !c.archived).filter((c) => canView(c, user));
   const active = pathname === `/pages/${page.id}`;
 
   return (
@@ -27,7 +27,7 @@ function OutlineNode({ page, depth }: { page: Page; depth: number }) {
         {page.title}
       </Link>
       {kids.map((k) => (
-        <OutlineNode key={k.id} page={k} depth={depth + 1} />
+        <OutlineNode key={k.id} page={k} depth={depth + 1} pages={pages} />
       ))}
     </>
   );
@@ -35,11 +35,13 @@ function OutlineNode({ page, depth }: { page: Page; depth: number }) {
 
 export function Sidebar() {
   const { user } = useAuth();
+  const { data } = useAppData();
+  const { categories, pages } = data;
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeCat = searchParams.get("cat") ?? "all";
 
-  const currentPage = pathname.startsWith("/pages/") ? PAGES.find((p) => p.id === pathname.split("/")[2]) : null;
+  const currentPage = pathname.startsWith("/pages/") ? pages.find((p) => p.id === pathname.split("/")[2]) : null;
 
   return (
     <aside className="hidden md:flex flex-col gap-5 border-r border-border bg-surface-2 p-5 w-[260px] shrink-0">
@@ -50,12 +52,12 @@ export function Sidebar() {
 
       <div className="flex flex-col gap-0.5">
         <div className="text-[0.72rem] uppercase tracking-wide text-ink-faint px-2.5 mb-1.5">カテゴリ</div>
-        {CATEGORIES.map((c) => {
-          const count = PAGES.filter((p) => p.categoryId === c.id && !p.archived && canView(p, user)).length;
+        {categories.map((c) => {
+          const count = pages.filter((p) => p.categoryId === c.id && !p.archived && canView(p, user)).length;
           const isActiveCat = pathname === "/" && activeCat === c.id;
           const expanded = isActiveCat || currentPage?.categoryId === c.id;
           const topPages = expanded
-            ? PAGES.filter((p) => p.categoryId === c.id && !p.parentId && !p.archived).filter((p) => canView(p, user))
+            ? pages.filter((p) => p.categoryId === c.id && !p.parentId && !p.archived).filter((p) => canView(p, user))
             : [];
 
           return (
@@ -70,7 +72,7 @@ export function Sidebar() {
                 <span className="font-code text-[0.74rem] text-ink-faint">{count}</span>
               </Link>
               {topPages.map((p) => (
-                <OutlineNode key={p.id} page={p} depth={0} />
+                <OutlineNode key={p.id} page={p} depth={0} pages={pages} />
               ))}
             </div>
           );

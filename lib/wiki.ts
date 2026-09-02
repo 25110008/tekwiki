@@ -1,8 +1,7 @@
-import { CATEGORIES, GLOSSARY, PAGES } from "./mock-data";
-import type { Page, User } from "./types";
+import type { Category, GlossaryEntry, Page, User } from "./types";
 
-export function catLabel(id: string): string {
-  return CATEGORIES.find((c) => c.id === id)?.label ?? id;
+export function catLabel(id: string, categories: Category[]): string {
+  return categories.find((c) => c.id === id)?.label ?? id;
 }
 
 export function canView(page: Page, user: User | null): boolean {
@@ -12,16 +11,16 @@ export function canView(page: Page, user: User | null): boolean {
   return page.categoryId === user.department;
 }
 
-export function getChildren(pageId: string, user: User | null): Page[] {
-  return PAGES.filter((p) => p.parentId === pageId && !p.archived && canView(p, user));
+export function getChildren(pageId: string, user: User | null, pages: Page[]): Page[] {
+  return pages.filter((p) => p.parentId === pageId && !p.archived && canView(p, user));
 }
 
-export function getBacklinks(pageId: string, user: User | null): Page[] {
+export function getBacklinks(pageId: string, user: User | null, pages: Page[], glossary: GlossaryEntry[]): Page[] {
   const seen = new Set<string>();
   const result: Page[] = [];
-  for (const p of PAGES) {
+  for (const p of pages) {
     if (p.id === pageId || p.archived || !canView(p, user)) continue;
-    const hit = GLOSSARY.some((g) => g.pageId === pageId && p.body.includes(g.term));
+    const hit = glossary.some((g) => g.pageId === pageId && p.body.includes(g.term));
     if (hit && !seen.has(p.id)) {
       seen.add(p.id);
       result.push(p);
@@ -34,27 +33,27 @@ function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
-function applyGlossaryLinks(escapedText: string, excludePageId: string | null): string {
-  const terms = [...GLOSSARY].sort((a, b) => b.term.length - a.term.length);
+function applyGlossaryLinks(escapedText: string, excludePageId: string | null, glossary: GlossaryEntry[], pages: Page[]): string {
+  const terms = [...glossary].sort((a, b) => b.term.length - a.term.length);
   let result = escapedText;
   for (const g of terms) {
     if (g.pageId === excludePageId) continue;
-    if (!PAGES.some((p) => p.id === g.pageId)) continue;
+    if (!pages.some((p) => p.id === g.pageId)) continue;
     const re = new RegExp(g.term, "g");
     result = result.replace(re, `<span class="auto-link" data-page-id="${g.pageId}">${g.term}</span>`);
   }
   return result;
 }
 
-export function linkify(text: string, excludePageId: string | null): string {
-  return applyGlossaryLinks(esc(text), excludePageId);
+export function linkify(text: string, excludePageId: string | null, glossary: GlossaryEntry[], pages: Page[]): string {
+  return applyGlossaryLinks(esc(text), excludePageId, glossary, pages);
 }
 
 /**
  * 自前のMarkdownレンダラー。見出し/太字/箇条書き/インラインコード/コードブロック/表
  * ＋自動キーワードリンクに対応する(プロトタイプで検証済みのロジックを移植)。
  */
-export function renderMarkdown(text: string, pageId: string | null): string {
+export function renderMarkdown(text: string, pageId: string | null, glossary: GlossaryEntry[], pages: Page[]): string {
   const BLK = "@@BLK";
   const INL = "@@INL";
   const blocks: string[] = [];
@@ -98,7 +97,7 @@ export function renderMarkdown(text: string, pageId: string | null): string {
     return stash(`<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`);
   });
 
-  src = applyGlossaryLinks(src, pageId);
+  src = applyGlossaryLinks(src, pageId, glossary, pages);
 
   const blkRe = new RegExp(`^${BLK}\\d+@@$`);
   let html = src

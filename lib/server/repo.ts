@@ -1,0 +1,317 @@
+// Googleスプレッドシートを実データとして扱うデータアクセス層。
+// サーバー専用(APIルートからのみ呼び出すこと)。
+import { appendRow, deleteRowById, readSheet, updateRowById } from "./sheets";
+import type {
+  Approval,
+  Category,
+  FaqItem,
+  GlossaryEntry,
+  GuidelineSection,
+  Inquiry,
+  Page,
+  Template,
+  User,
+} from "../types";
+
+const bool = (v: string) => v.trim().toUpperCase() === "TRUE";
+const nowIso = () => new Date().toISOString();
+
+// 既存データ(スプレッドシート初期投入分)の日時表記と揃えるためのフォーマット。
+// "YYYY-MM-DD HH:mm" で統一しておくことで、文字列比較のままでも新しい順に並び替えられる。
+function jstLabel(): string {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const rows = await readSheet("Categories");
+  return rows.map((r) => ({ id: r.id, label: r.label, requiresApproval: bool(r.requiresApproval) }));
+}
+
+export async function requiresApproval(categoryId: string): Promise<boolean> {
+  const cats = await getCategories();
+  return cats.find((c) => c.id === categoryId)?.requiresApproval ?? true;
+}
+
+export async function getUsers(): Promise<User[]> {
+  const rows = await readSheet("Users");
+  return rows.map((r) => ({ id: r.id, name: r.name, email: r.email, department: r.department, role: r.role as User["role"] }));
+}
+
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  const users = await getUsers();
+  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+}
+
+async function buildPages(): Promise<Page[]> {
+  const [pageRows, attachmentRows, historyRows] = await Promise.all([
+    readSheet("Pages"),
+    readSheet("Attachments"),
+    readSheet("History"),
+  ]);
+
+  return pageRows.map((r) => {
+    const attachments = attachmentRows
+      .filter((a) => a.pageId === r.id)
+      .map((a) => ({ name: a.fileName, size: formatBytes(Number(a.sizeBytes) || 0) }));
+    const history = historyRows
+      .filter((h) => h.pageId === r.id)
+      .map((h) => ({ who: h.editedBy, when: h.editedAt, what: h.summary }))
+      .sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0)); // 新しい順
+
+    return {
+      id: r.id,
+      categoryId: r.categoryId,
+      parentId: r.parentId || null,
+      title: r.title,
+      tags: r.tags ? r.tags.split(",").filter(Boolean) : [],
+      private: bool(r.private),
+      body: r.body,
+      updatedBy: r.updatedBy,
+      updatedAt: r.updatedAt,
+      archived: bool(r.archived),
+      attachments,
+      history,
+    } satisfies Page;
+  });
+}
+
+function formatBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)}KB`;
+  return `${n}B`;
+}
+
+export async function getPages(): Promise<Page[]> {
+  return buildPages();
+}
+
+export async function getPageById(id: string): Promise<Page | undefined> {
+  const pages = await buildPages();
+  return pages.find((p) => p.id === id);
+}
+
+export async function getGlossary(): Promise<GlossaryEntry[]> {
+  const rows = await readSheet("Glossary");
+  return rows.map((r) => ({ term: r.term, pageId: r.pageId }));
+}
+
+export async function getTemplates(): Promise<Template[]> {
+  const rows = await readSheet("Templates");
+  return rows.map((r) => ({ id: r.id, label: r.label, hint: r.hint, titleTemplate: r.titleTemplate, bodyTemplate: r.bodyTemplate }));
+}
+
+export async function getFaqs(): Promise<FaqItem[]> {
+  const rows = await readSheet("FAQ");
+  return rows
+    .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder))
+    .map((r) => ({ id: r.id, question: r.question, answer: r.answer, pageId: r.pageId || null }));
+}
+
+export async function getGuidelines(): Promise<GuidelineSection[]> {
+  const rows = await readSheet("Guidelines");
+  return rows.sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)).map((r) => ({ id: r.id, title: r.title, body: r.body }));
+}
+
+export async function getApprovals(): Promise<Approval[]> {
+  const rows = await readSheet("Approvals");
+  return rows
+    .filter((r) => r.status === "pending")
+    .map((r) => ({
+      id: r.id,
+      pageId: r.pageId || null,
+      title: r.title,
+      categoryId: r.categoryId,
+      author: r.author,
+      submittedAt: r.submittedAt,
+      status: r.status as Approval["status"],
+      newData: JSON.parse(r.newDataJson),
+    }));
+}
+
+export async function getInquiries(): Promise<Inquiry[]> {
+  const rows = await readSheet("Inquiries");
+  return rows.map((r) => ({
+    id: r.id,
+    type: r.type as Inquiry["type"],
+    subject: r.subject,
+    body: r.body,
+    authorId: r.authorId,
+    authorName: r.authorName,
+    status: r.status as Inquiry["status"],
+    createdAt: r.createdAt,
+  }));
+}
+
+export interface SubmitPageInput {
+  pageId: string | null;
+  categoryId: string;
+  parentId: string | null;
+  title: string;
+  tags: string[];
+  private: boolean;
+  body: string;
+}
+
+export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" };
+
+async function nextId(sheetName: string, prefix: string): Promise<string> {
+  const rows = await readSheet(sheetName);
+  return `${prefix}${rows.length + 1}`;
+}
+
+export async function submitPage(input: SubmitPageInput, user: User): Promise<SubmitResult> {
+  const title = input.title.trim() || "無題のページ";
+  const needsApproval = await requiresApproval(input.categoryId);
+
+  if (needsApproval) {
+    const id = await nextId("Approvals", "ap");
+    await appendRow("Approvals", {
+      id,
+      pageId: input.pageId ?? "",
+      title,
+      categoryId: input.categoryId,
+      author: user.name,
+      submittedAt: jstLabel(),
+      status: "pending",
+      newDataJson: JSON.stringify({
+        title,
+        body: input.body,
+        categoryId: input.categoryId,
+        private: input.private,
+        tags: input.tags,
+        parentId: input.parentId,
+      }),
+    });
+    return { status: "pending" };
+  }
+
+  if (input.pageId) {
+    await updateRowById("Pages", "id", input.pageId, {
+      title,
+      body: input.body,
+      categoryId: input.categoryId,
+      private: input.private ? "TRUE" : "FALSE",
+      tags: input.tags.join(","),
+      updatedBy: user.name,
+      updatedAt: jstLabel(),
+    });
+    await appendRow("History", {
+      id: await nextId("History", "h"),
+      pageId: input.pageId,
+      editedBy: user.name,
+      editedAt: jstLabel(),
+      summary: "内容を更新",
+      bodySnapshot: input.body,
+    });
+    return { status: "published", pageId: input.pageId };
+  }
+
+  const id = await nextId("Pages", "p");
+  await appendRow("Pages", {
+    id,
+    categoryId: input.categoryId,
+    parentId: input.parentId ?? "",
+    title,
+    tags: input.tags.join(","),
+    private: input.private ? "TRUE" : "FALSE",
+    body: input.body,
+    updatedBy: user.name,
+    updatedAt: jstLabel(),
+    archived: "FALSE",
+    createdAt: nowIso(),
+  });
+  await appendRow("History", {
+    id: await nextId("History", "h"),
+    pageId: id,
+    editedBy: user.name,
+    editedAt: jstLabel(),
+    summary: "初版作成",
+    bodySnapshot: input.body,
+  });
+  return { status: "published", pageId: id };
+}
+
+export async function approveApproval(approvalId: string, reviewer: User): Promise<void> {
+  const rows = await readSheet("Approvals");
+  const item = rows.find((r) => r.id === approvalId && r.status === "pending");
+  if (!item) return;
+  const newData = JSON.parse(item.newDataJson) as {
+    title: string;
+    body: string;
+    categoryId: string;
+    private: boolean;
+    tags: string[];
+    parentId: string | null;
+  };
+
+  if (item.pageId) {
+    await updateRowById("Pages", "id", item.pageId, {
+      title: newData.title,
+      body: newData.body,
+      categoryId: newData.categoryId,
+      private: newData.private ? "TRUE" : "FALSE",
+      tags: newData.tags.join(","),
+      updatedBy: item.author,
+      updatedAt: jstLabel(),
+    });
+    await appendRow("History", {
+      id: await nextId("History", "h"),
+      pageId: item.pageId,
+      editedBy: item.author,
+      editedAt: jstLabel(),
+      summary: `内容を更新（承認済み・承認者: ${reviewer.name}）`,
+      bodySnapshot: newData.body,
+    });
+  } else {
+    const id = await nextId("Pages", "p");
+    await appendRow("Pages", {
+      id,
+      categoryId: newData.categoryId,
+      parentId: newData.parentId ?? "",
+      title: newData.title,
+      tags: newData.tags.join(","),
+      private: newData.private ? "TRUE" : "FALSE",
+      body: newData.body,
+      updatedBy: item.author,
+      updatedAt: jstLabel(),
+      archived: "FALSE",
+      createdAt: nowIso(),
+    });
+    await appendRow("History", {
+      id: await nextId("History", "h"),
+      pageId: id,
+      editedBy: item.author,
+      editedAt: jstLabel(),
+      summary: `初版作成（承認済み・承認者: ${reviewer.name}）`,
+      bodySnapshot: newData.body,
+    });
+  }
+  await updateRowById("Approvals", "id", approvalId, { status: "approved" });
+}
+
+export async function rejectApproval(approvalId: string): Promise<void> {
+  await deleteRowById("Approvals", "id", approvalId);
+}
+
+export async function createInquiry(input: { type: string; subject: string; body: string; authorId: string; authorName: string }): Promise<void> {
+  await appendRow("Inquiries", {
+    id: await nextId("Inquiries", "iq"),
+    type: input.type,
+    subject: input.subject,
+    body: input.body,
+    authorId: input.authorId,
+    authorName: input.authorName,
+    status: "open",
+    createdAt: jstLabel(),
+  });
+}

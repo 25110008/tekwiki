@@ -1,7 +1,7 @@
 // AIチャットの検索(retrieval)ロジック。クライアント・サーバーどちらからも使う純粋関数。
 import type { GlossaryEntry, Page } from "./types";
 
-export function excerpt(body: string, maxLen = 600): string {
+export function excerpt(body: string, maxLen = 1500): string {
   const plain = body.replace(/```[\s\S]*?```/g, "").replace(/[#*`|]/g, "").trim();
   return plain.length > maxLen ? `${plain.slice(0, maxLen)}...` : plain;
 }

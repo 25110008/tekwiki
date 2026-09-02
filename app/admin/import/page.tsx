@@ -15,12 +15,12 @@ const SUPPORTED = [
   { label: "PDF", ext: ".pdf" },
   { label: "Word (.docx)", ext: ".docx" },
   { label: "Webページ(URL)", ext: "" },
+  { label: "保存済みHTMLファイル", ext: ".html,.htm" },
   { label: "Markdown ZIP(複数一括)", ext: ".zip" },
 ];
-const PLANNED = ["Confluenceエクスポート", "Notionエクスポート"];
 
 const TEXT_EXTENSIONS = ["md", "markdown", "txt", "csv"];
-const SERVER_PARSE_EXTENSIONS = ["pdf", "docx"];
+const SERVER_PARSE_EXTENSIONS = ["pdf", "docx", "html", "htm"];
 
 function splitTitleAndBody(fileName: string, content: string): { title: string; body: string } {
   const lines = content.split(/\r?\n/);
@@ -177,13 +177,11 @@ export default function ImportPage() {
           </span>
         ))}
       </div>
-      <div className="flex flex-wrap gap-1.5 mb-6">
-        {PLANNED.map((f) => (
-          <span key={f} className="text-[0.76rem] px-2.5 py-1 rounded-full bg-surface-3 text-ink-faint border border-border">
-            {f}(準備中)
-          </span>
-        ))}
-      </div>
+      <p className="text-ink-faint text-[0.78rem] mb-6 max-w-[60ch]">
+        ConfluenceやNotionは専用フォーマットに未対応ですが、社外に公開されているページであれば「Webページから取り込む」欄にURLを貼り付けることで取り込めます。
+        <br />
+        ログインが必要な社内限定ページは、そのページを開いた状態でブラウザの「名前を付けて保存(ウェブページ・HTMLのみ)」で保存し、そのファイルを下の「またはファイルを選択」からアップロードしてください。
+      </p>
 
       <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">Webページから取り込む</div>
       <div className="flex gap-2 max-w-[560px] mb-6">
@@ -210,9 +208,9 @@ export default function ImportPage() {
         onClick={() => fileRef.current?.click()}
         className="border border-dashed border-border rounded-s px-4 py-8 text-center text-ink-faint text-[0.85rem] bg-surface-2 max-w-[560px] cursor-pointer hover:border-accent"
       >
-        {parsing ? "解析中..." : sourceLabel ? `選択中: ${sourceLabel}` : "クリックしてファイルを選択(Markdown / テキスト / CSV / PDF / Word)"}
+        {parsing ? "解析中..." : sourceLabel ? `選択中: ${sourceLabel}` : "クリックしてファイルを選択(Markdown / テキスト / CSV / PDF / Word / 保存済みHTML)"}
       </div>
-      <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.csv,.pdf,.docx" onChange={handleFileChange} className="hidden" />
+      <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.csv,.pdf,.docx,.html,.htm" onChange={handleFileChange} className="hidden" />
 
       {error && <div className="bg-danger-soft text-danger border border-danger rounded-s px-4 py-2.5 text-sm mt-4 max-w-[560px]">{error}</div>}
 

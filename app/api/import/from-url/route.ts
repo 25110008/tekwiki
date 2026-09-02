@@ -1,24 +1,5 @@
 import { NextResponse } from "next/server";
-import { parseHTML } from "linkedom";
-import { Readability } from "@mozilla/readability";
-
-function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
-    .replace(/<\/(p|div|li|h[1-6]|br)>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#160;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+import { extractArticle } from "@/lib/server/article-extract";
 
 export async function POST(request: Request) {
   const { url } = (await request.json()) as { url: string };
@@ -47,17 +28,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { document } = parseHTML(html);
-    const article = new Readability(document as unknown as Document).parse();
-
-    if (!article || !article.textContent?.trim()) {
+    const article = extractArticle(html, parsed.hostname);
+    if (!article) {
       return NextResponse.json({ error: "本文を抽出できませんでした" }, { status: 422 });
     }
-
-    const title = article.title || parsed.hostname;
-    const body = htmlToPlainText(article.content ?? article.textContent);
-
-    return NextResponse.json({ title, body });
+    return NextResponse.json(article);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "ページの解析に失敗しました" }, { status: 500 });

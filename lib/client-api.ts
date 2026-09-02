@@ -87,8 +87,12 @@ export function attachmentDownloadUrl(attachmentId: string, user: User): string 
   return `/api/attachments/${attachmentId}?user=${encodeURIComponent(JSON.stringify(user))}`;
 }
 
-export async function deleteAttachmentApi(attachmentId: string): Promise<void> {
-  const res = await fetch(`/api/attachments/${attachmentId}`, { method: "DELETE" });
+export async function deleteAttachmentApi(attachmentId: string, user: User): Promise<void> {
+  const res = await fetch(`/api/attachments/${attachmentId}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user }),
+  });
   if (!res.ok) throw new Error("削除に失敗しました");
 }
 

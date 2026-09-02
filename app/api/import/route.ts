@@ -10,6 +10,10 @@ export async function POST(request: Request) {
     user: User;
   };
 
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "権限がありません" }, { status: 403 });
+  }
+
   const pageId = await importPage({ categoryId, title, body }, user);
   return NextResponse.json({ ok: true, pageId });
 }

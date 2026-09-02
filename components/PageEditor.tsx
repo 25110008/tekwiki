@@ -160,9 +160,10 @@ export function PageEditor({
   }
 
   async function handleAttachmentDelete(attachmentId: string) {
+    if (!user) return;
     setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
     try {
-      await deleteAttachmentApi(attachmentId);
+      await deleteAttachmentApi(attachmentId, user);
       await refresh();
     } catch {
       setAttachmentError("削除に失敗しました");

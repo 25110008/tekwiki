@@ -27,6 +27,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "パラメータが不正です" }, { status: 400 });
   }
   const user = JSON.parse(userRaw) as User;
+  if (user.role !== "admin") {
+    return NextResponse.json({ error: "権限がありません" }, { status: 403 });
+  }
 
   try {
     const zip = await JSZip.loadAsync(await file.arrayBuffer());

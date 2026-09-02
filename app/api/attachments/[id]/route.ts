@@ -28,6 +28,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { user } = (await request.json().catch(() => ({}))) as { user?: User };
+
+  const attachment = await getAttachment(id);
+  if (!attachment) {
+    return NextResponse.json({ error: "ファイルが見つかりません" }, { status: 404 });
+  }
+  if (attachment.page && !canView(attachment.page, user ?? null)) {
+    return NextResponse.json({ error: "権限がありません" }, { status: 403 });
+  }
+
   await deleteAttachment(id);
   return NextResponse.json({ ok: true });
 }

@@ -101,6 +101,12 @@ export function Sidebar() {
           <Link href="/admin/inquiries" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
             お問い合わせ一覧
           </Link>
+          <Link href="/admin/faq" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+            よくある質問の編集
+          </Link>
+          <Link href="/admin/guidelines" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+            編集ガイドラインの編集
+          </Link>
           <Link href="/admin/archive" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
             アーカイブ済み
           </Link>

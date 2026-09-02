@@ -1,6 +1,6 @@
 // クライアントから各APIルートを呼び出すためのヘルパー。
 import type { DraftInput } from "./store";
-import type { User } from "./types";
+import type { FaqItem, GuidelineSection, User } from "./types";
 
 export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" };
 
@@ -132,4 +132,62 @@ export async function importPageApi(input: { categoryId: string; title: string; 
   });
   if (!res.ok) throw new Error("インポートに失敗しました");
   return res.json();
+}
+
+export async function createFaqApi(input: { question: string; answer: string; pageId?: string | null }, user: User): Promise<FaqItem> {
+  const res = await fetch("/api/faq", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, user }),
+  });
+  const json = (await res.json()) as { faq?: FaqItem; error?: string };
+  if (!res.ok || !json.faq) throw new Error(json.error ?? "作成に失敗しました");
+  return json.faq;
+}
+
+export async function updateFaqApi(id: string, input: { question: string; answer: string; pageId?: string | null }, user: User): Promise<void> {
+  const res = await fetch(`/api/faq/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, user }),
+  });
+  if (!res.ok) throw new Error("更新に失敗しました");
+}
+
+export async function deleteFaqApi(id: string, user: User): Promise<void> {
+  const res = await fetch(`/api/faq/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user }),
+  });
+  if (!res.ok) throw new Error("削除に失敗しました");
+}
+
+export async function createGuidelineApi(input: { title: string; body: string }, user: User): Promise<GuidelineSection> {
+  const res = await fetch("/api/guidelines", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, user }),
+  });
+  const json = (await res.json()) as { guideline?: GuidelineSection; error?: string };
+  if (!res.ok || !json.guideline) throw new Error(json.error ?? "作成に失敗しました");
+  return json.guideline;
+}
+
+export async function updateGuidelineApi(id: string, input: { title: string; body: string }, user: User): Promise<void> {
+  const res = await fetch(`/api/guidelines/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, user }),
+  });
+  if (!res.ok) throw new Error("更新に失敗しました");
+}
+
+export async function deleteGuidelineApi(id: string, user: User): Promise<void> {
+  const res = await fetch(`/api/guidelines/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user }),
+  });
+  if (!res.ok) throw new Error("削除に失敗しました");
 }

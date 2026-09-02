@@ -31,3 +31,49 @@ export async function rejectApprovalApi(id: string): Promise<void> {
   });
   if (!res.ok) throw new Error("差し戻しに失敗しました");
 }
+
+export async function setPageArchivedApi(pageId: string, archived: boolean, user: User): Promise<void> {
+  const res = await fetch(`/api/pages/${pageId}/archive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archived, user }),
+  });
+  if (!res.ok) throw new Error("操作に失敗しました");
+}
+
+export async function deletePageApi(pageId: string, user: User): Promise<void> {
+  const res = await fetch(`/api/pages/${pageId}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user }),
+  });
+  if (!res.ok) throw new Error("削除に失敗しました");
+}
+
+export async function createInquiryApi(input: { type: string; subject: string; body: string; authorId: string; authorName: string }): Promise<void> {
+  const res = await fetch("/api/inquiries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error("送信に失敗しました");
+}
+
+export async function resolveInquiryApi(id: string, user: User): Promise<void> {
+  const res = await fetch(`/api/inquiries/${id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user }),
+  });
+  if (!res.ok) throw new Error("操作に失敗しました");
+}
+
+export async function importPageApi(input: { categoryId: string; title: string; body: string }, user: User): Promise<{ pageId: string }> {
+  const res = await fetch("/api/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, user }),
+  });
+  if (!res.ok) throw new Error("インポートに失敗しました");
+  return res.json();
+}

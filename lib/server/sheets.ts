@@ -118,6 +118,33 @@ export async function readSheet(sheetName: string): Promise<Record<string, strin
     });
 }
 
+// 複数シートを1回のAPI呼び出しでまとめて読む(読み取りクォータの消費を1回分に抑えるため)。
+export async function readSheetsBatch(sheetNames: string[]): Promise<Record<string, Record<string, string>[]>> {
+  const query = sheetNames.map((n) => `ranges=${encodeURIComponent(n)}`).join("&");
+  const res = await sheetsFetch(`/values:batchGet?${query}`);
+  const data = (await res.json()) as { valueRanges: { values?: SheetRow[] }[] };
+
+  const result: Record<string, Record<string, string>[]> = {};
+  sheetNames.forEach((name, i) => {
+    const rows = data.valueRanges[i]?.values ?? [];
+    if (rows.length === 0) {
+      result[name] = [];
+      return;
+    }
+    const [header, ...body] = rows;
+    result[name] = body
+      .filter((row) => row.some((cell) => cell !== undefined && cell !== ""))
+      .map((row) => {
+        const obj: Record<string, string> = {};
+        header.forEach((key, colIdx) => {
+          obj[key] = row[colIdx] ?? "";
+        });
+        return obj;
+      });
+  });
+  return result;
+}
+
 // ヘッダー行の並びを読み取る(書き込み時に列順を合わせるため)。
 export async function readHeader(sheetName: string): Promise<string[]> {
   const res = await sheetsFetch(`/values/${encodeURIComponent(sheetName)}!1:1`);
@@ -184,6 +211,26 @@ export async function deleteRowById(sheetName: string, idColumn: string, idValue
     }),
   });
   return true;
+}
+
+// column列の値がvalueと一致する行をすべて削除する(該当ページの添付・履歴の一括削除などに使う)。
+export async function deleteRowsWhere(sheetName: string, column: string, value: string): Promise<void> {
+  const sheetId = await getSheetIdByName(sheetName);
+  const header = await readHeader(sheetName);
+  const res = await sheetsFetch(`/values/${encodeURIComponent(sheetName)}`);
+  const data = (await res.json()) as { values?: SheetRow[] };
+  const rows = data.values ?? [];
+  const colIdx = header.indexOf(column);
+  const matchIndexes = rows.map((r, i) => (i > 0 && r[colIdx] === value ? i : -1)).filter((i) => i !== -1);
+  if (matchIndexes.length === 0) return;
+
+  // 後ろの行から先に消さないと、削除のたびに残りの行番号がずれる。
+  const requests = matchIndexes
+    .sort((a, b) => b - a)
+    .map((rowIndex) => ({
+      deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 } },
+    }));
+  await sheetsFetch(`:batchUpdate`, { method: "POST", body: JSON.stringify({ requests }) });
 }
 
 const sheetIdCache = new Map<string, number>();

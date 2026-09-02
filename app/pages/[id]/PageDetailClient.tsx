@@ -8,6 +8,7 @@ import { PageCard } from "@/components/PageCard";
 import { useAuth } from "@/app/providers";
 import { useAppData } from "@/app/data-provider";
 import { canView, catLabel, getBacklinks, getChildren, renderMarkdown } from "@/lib/wiki";
+import { setPageArchivedApi } from "@/lib/client-api";
 import type { Category, GlossaryEntry, Page } from "@/lib/types";
 
 function LockIcon() {
@@ -22,7 +23,7 @@ function LockIcon() {
 export default function PageDetailClient() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const { data, loading } = useAppData();
+  const { data, loading, refresh } = useAppData();
   const [tab, setTab] = useState<"body" | "history">("body");
 
   const page = data.pages.find((p) => p.id === id);
@@ -41,6 +42,7 @@ export default function PageDetailClient() {
           pages={data.pages}
           categories={data.categories}
           glossary={data.glossary}
+          refresh={refresh}
         />
       )}
     </AppShell>
@@ -64,6 +66,7 @@ function PageBody({
   pages,
   categories,
   glossary,
+  refresh,
 }: {
   page: Page;
   tab: "body" | "history";
@@ -71,14 +74,26 @@ function PageBody({
   pages: Page[];
   categories: Category[];
   glossary: GlossaryEntry[];
+  refresh: () => Promise<void>;
 }) {
   const { user } = useAuth();
   const router = useRouter();
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const crumb = buildCrumb(page, pages);
   const depth = crumb.length - 1;
   const atMaxDepth = depth >= 2;
   const children = getChildren(page.id, user, pages);
   const backlinks = getBacklinks(page.id, user, pages, glossary);
+
+  async function toggleArchive() {
+    if (!user || archiving) return;
+    setArchiving(true);
+    await setPageArchivedApi(page.id, !page.archived, user);
+    await refresh();
+    setArchiving(false);
+    setConfirmingArchive(false);
+  }
 
   function handleProseClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = (e.target as HTMLElement).closest("[data-page-id]");
@@ -116,9 +131,31 @@ function PageBody({
             ))}
           </div>
         </div>
-        <Link href={`/pages/${page.id}/edit`} className="border border-border rounded-s px-4 py-2 text-sm hover:bg-surface-2 shrink-0">
-          編集する
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          {user?.role === "admin" &&
+            (confirmingArchive ? (
+              <div className="flex items-center gap-2 bg-warn-soft border border-warn rounded-s px-3 py-2">
+                <span className="text-warn text-[0.8rem]">{page.archived ? "アーカイブを解除しますか？" : "アーカイブしますか？"}</span>
+                <button
+                  onClick={toggleArchive}
+                  disabled={archiving}
+                  className="bg-accent text-white rounded-s px-3 py-1 text-[0.8rem] font-medium disabled:opacity-60"
+                >
+                  実行する
+                </button>
+                <button onClick={() => setConfirmingArchive(false)} className="border border-border rounded-s px-3 py-1 text-[0.8rem] bg-surface-1 hover:bg-surface-2">
+                  キャンセル
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmingArchive(true)} className="border border-border rounded-s px-4 py-2 text-sm hover:bg-surface-2">
+                {page.archived ? "アーカイブを解除" : "アーカイブする"}
+              </button>
+            ))}
+          <Link href={`/pages/${page.id}/edit`} className="border border-border rounded-s px-4 py-2 text-sm hover:bg-surface-2">
+            編集する
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-4.5 border-b border-border mb-5">

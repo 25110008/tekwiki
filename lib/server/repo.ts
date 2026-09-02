@@ -1,6 +1,6 @@
 // Googleスプレッドシートを実データとして扱うデータアクセス層。
 // サーバー専用(APIルートからのみ呼び出すこと)。
-import { appendRow, deleteRowById, readSheet, updateRowById } from "./sheets";
+import { appendRow, deleteRowById, deleteRowsWhere, readSheet, readSheetsBatch, updateRowById } from "./sheets";
 import type {
   Approval,
   Category,
@@ -32,33 +32,23 @@ function jstLabel(): string {
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
-export async function getCategories(): Promise<Category[]> {
-  const rows = await readSheet("Categories");
+type Row = Record<string, string>;
+
+function parseCategories(rows: Row[]): Category[] {
   return rows.map((r) => ({ id: r.id, label: r.label, requiresApproval: bool(r.requiresApproval) }));
 }
 
-export async function requiresApproval(categoryId: string): Promise<boolean> {
-  const cats = await getCategories();
-  return cats.find((c) => c.id === categoryId)?.requiresApproval ?? true;
-}
-
-export async function getUsers(): Promise<User[]> {
-  const rows = await readSheet("Users");
+function parseUsers(rows: Row[]): User[] {
   return rows.map((r) => ({ id: r.id, name: r.name, email: r.email, department: r.department, role: r.role as User["role"] }));
 }
 
-export async function getUserByEmail(email: string): Promise<User | undefined> {
-  const users = await getUsers();
-  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+function formatBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)}KB`;
+  return `${n}B`;
 }
 
-async function buildPages(): Promise<Page[]> {
-  const [pageRows, attachmentRows, historyRows] = await Promise.all([
-    readSheet("Pages"),
-    readSheet("Attachments"),
-    readSheet("History"),
-  ]);
-
+function parsePages(pageRows: Row[], attachmentRows: Row[], historyRows: Row[]): Page[] {
   return pageRows.map((r) => {
     const attachments = attachmentRows
       .filter((a) => a.pageId === r.id)
@@ -85,45 +75,29 @@ async function buildPages(): Promise<Page[]> {
   });
 }
 
-function formatBytes(n: number): string {
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}MB`;
-  if (n >= 1024) return `${Math.round(n / 1024)}KB`;
-  return `${n}B`;
-}
-
-export async function getPages(): Promise<Page[]> {
-  return buildPages();
-}
-
-export async function getPageById(id: string): Promise<Page | undefined> {
-  const pages = await buildPages();
-  return pages.find((p) => p.id === id);
-}
-
-export async function getGlossary(): Promise<GlossaryEntry[]> {
-  const rows = await readSheet("Glossary");
+function parseGlossary(rows: Row[]): GlossaryEntry[] {
   return rows.map((r) => ({ term: r.term, pageId: r.pageId }));
 }
 
-export async function getTemplates(): Promise<Template[]> {
-  const rows = await readSheet("Templates");
+function parseTemplates(rows: Row[]): Template[] {
   return rows.map((r) => ({ id: r.id, label: r.label, hint: r.hint, titleTemplate: r.titleTemplate, bodyTemplate: r.bodyTemplate }));
 }
 
-export async function getFaqs(): Promise<FaqItem[]> {
-  const rows = await readSheet("FAQ");
+function parseFaqs(rows: Row[]): FaqItem[] {
   return rows
+    .slice()
     .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder))
     .map((r) => ({ id: r.id, question: r.question, answer: r.answer, pageId: r.pageId || null }));
 }
 
-export async function getGuidelines(): Promise<GuidelineSection[]> {
-  const rows = await readSheet("Guidelines");
-  return rows.sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)).map((r) => ({ id: r.id, title: r.title, body: r.body }));
+function parseGuidelines(rows: Row[]): GuidelineSection[] {
+  return rows
+    .slice()
+    .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder))
+    .map((r) => ({ id: r.id, title: r.title, body: r.body }));
 }
 
-export async function getApprovals(): Promise<Approval[]> {
-  const rows = await readSheet("Approvals");
+function parseApprovals(rows: Row[]): Approval[] {
   return rows
     .filter((r) => r.status === "pending")
     .map((r) => ({
@@ -138,8 +112,7 @@ export async function getApprovals(): Promise<Approval[]> {
     }));
 }
 
-export async function getInquiries(): Promise<Inquiry[]> {
-  const rows = await readSheet("Inquiries");
+function parseInquiries(rows: Row[]): Inquiry[] {
   return rows.map((r) => ({
     id: r.id,
     type: r.type as Inquiry["type"],
@@ -150,6 +123,56 @@ export async function getInquiries(): Promise<Inquiry[]> {
     status: r.status as Inquiry["status"],
     createdAt: r.createdAt,
   }));
+}
+
+export interface AllData {
+  categories: Category[];
+  users: User[];
+  pages: Page[];
+  glossary: GlossaryEntry[];
+  templates: Template[];
+  faqs: FaqItem[];
+  guidelines: GuidelineSection[];
+  approvals: Approval[];
+  inquiries: Inquiry[];
+}
+
+const ALL_SHEETS = ["Categories", "Users", "Pages", "Attachments", "History", "Glossary", "Templates", "FAQ", "Guidelines", "Approvals", "Inquiries"];
+
+// 画面表示に必要な全シートを1回のAPI呼び出しでまとめて取得する(読み取りクォータ対策)。
+export async function getAllData(): Promise<AllData> {
+  const sheets = await readSheetsBatch(ALL_SHEETS);
+  return {
+    categories: parseCategories(sheets.Categories),
+    users: parseUsers(sheets.Users),
+    pages: parsePages(sheets.Pages, sheets.Attachments, sheets.History),
+    glossary: parseGlossary(sheets.Glossary),
+    templates: parseTemplates(sheets.Templates),
+    faqs: parseFaqs(sheets.FAQ),
+    guidelines: parseGuidelines(sheets.Guidelines),
+    approvals: parseApprovals(sheets.Approvals),
+    inquiries: parseInquiries(sheets.Inquiries),
+  };
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const rows = await readSheet("Categories");
+  return parseCategories(rows);
+}
+
+export async function requiresApproval(categoryId: string): Promise<boolean> {
+  const cats = await getCategories();
+  return cats.find((c) => c.id === categoryId)?.requiresApproval ?? true;
+}
+
+export async function getUsers(): Promise<User[]> {
+  const rows = await readSheet("Users");
+  return parseUsers(rows);
+}
+
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  const users = await getUsers();
+  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
 }
 
 export interface SubmitPageInput {
@@ -314,4 +337,50 @@ export async function createInquiry(input: { type: string; subject: string; body
     status: "open",
     createdAt: jstLabel(),
   });
+}
+
+export async function resolveInquiry(id: string): Promise<void> {
+  await updateRowById("Inquiries", "id", id, { status: "resolved" });
+}
+
+export async function setPageArchived(pageId: string, archived: boolean): Promise<void> {
+  await updateRowById("Pages", "id", pageId, { archived: archived ? "TRUE" : "FALSE" });
+}
+
+export async function deletePage(pageId: string): Promise<void> {
+  await deleteRowById("Pages", "id", pageId);
+  await deleteRowsWhere("Attachments", "pageId", pageId);
+  await deleteRowsWhere("History", "pageId", pageId);
+}
+
+export interface CreatedFromImport {
+  categoryId: string;
+  title: string;
+  body: string;
+}
+
+export async function importPage(input: CreatedFromImport, user: User): Promise<string> {
+  const id = await nextId("Pages", "p");
+  await appendRow("Pages", {
+    id,
+    categoryId: input.categoryId,
+    parentId: "",
+    title: input.title,
+    tags: "",
+    private: "FALSE",
+    body: input.body,
+    updatedBy: user.name,
+    updatedAt: jstLabel(),
+    archived: "FALSE",
+    createdAt: nowIso(),
+  });
+  await appendRow("History", {
+    id: await nextId("History", "h"),
+    pageId: id,
+    editedBy: user.name,
+    editedAt: jstLabel(),
+    summary: "データインポートで作成",
+    bodySnapshot: input.body,
+  });
+  return id;
 }

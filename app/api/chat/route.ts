@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   // ヒットしない。そのため、質問がキーワード的に非公開ページを指している場合は、意味検索が
   // 別の無関係な公開ページを拾っていたとしても、非公開である旨を優先して案内する)。
   const keywordMatch = findRelevantPage(q, pages, glossary);
-  if (keywordMatch?.private && keywordMatch.id !== match?.id) {
+  if ((keywordMatch?.private || keywordMatch?.archived) && keywordMatch.id !== match?.id) {
     match = keywordMatch;
   } else if (!match) {
     match = keywordMatch;

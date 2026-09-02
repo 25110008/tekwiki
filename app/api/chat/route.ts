@@ -37,10 +37,14 @@ export async function POST(request: Request) {
     console.error("意味検索に失敗しました。キーワード検索にフォールバックします", err);
   }
 
-  // 意味検索でヒットしなかった場合、キーワード一致で探す(非公開ページの案内メッセージを
-  // 出すためにも使う。非公開ページはそもそも埋め込みを持たないため意味検索ではヒットしない)。
-  if (!match) {
-    match = findRelevantPage(q, pages, glossary);
+  // キーワード一致は常に確認する(非公開ページはそもそも埋め込みを持たないため意味検索では
+  // ヒットしない。そのため、質問がキーワード的に非公開ページを指している場合は、意味検索が
+  // 別の無関係な公開ページを拾っていたとしても、非公開である旨を優先して案内する)。
+  const keywordMatch = findRelevantPage(q, pages, glossary);
+  if (keywordMatch?.private && keywordMatch.id !== match?.id) {
+    match = keywordMatch;
+  } else if (!match) {
+    match = keywordMatch;
   }
 
   if (!match) {

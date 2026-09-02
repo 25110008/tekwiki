@@ -9,7 +9,7 @@ import type {
   GuidelineSection,
 } from "./types";
 
-export const ORG_DOMAIN = "tcdigital.jp";
+export const ORG_DOMAIN = "c.tcdigital.jp";
 
 export const CATEGORIES: Category[] = [
   { id: "all", label: "全社共通", requiresApproval: true },
@@ -20,9 +20,10 @@ export const CATEGORIES: Category[] = [
 ];
 
 export const USERS: User[] = [
-  { id: "tanaka", name: "田中 沙織", email: "tanaka@tcdigital.jp", department: "sales", role: "member" },
-  { id: "sato", name: "佐藤 健", email: "sato@tcdigital.jp", department: "dev", role: "member" },
-  { id: "admin", name: "システム管理者", email: "admin@tcdigital.jp", department: "all", role: "admin" },
+  { id: "tanaka", name: "田中 沙織", email: "tanaka@c.tcdigital.jp", department: "sales", role: "member" },
+  { id: "sato", name: "佐藤 健", email: "sato@c.tcdigital.jp", department: "dev", role: "member" },
+  { id: "admin", name: "システム管理者", email: "admin@c.tcdigital.jp", department: "all", role: "admin" },
+  { id: "nakagawa", name: "中川 日向", email: "hiyuu.nakagawa@c.tcdigital.jp", department: "dev", role: "admin" },
 ];
 
 export const PAGES: Page[] = [

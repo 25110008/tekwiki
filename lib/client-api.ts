@@ -84,6 +84,22 @@ export async function askChatApi(question: string): Promise<ChatAnswer> {
   return res.json();
 }
 
+export interface ZipImportResult {
+  created: { fileName: string; pageId: string; title: string }[];
+  failed: { fileName: string; error: string }[];
+}
+
+export async function importZipApi(file: File, categoryId: string, user: User): Promise<ZipImportResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("categoryId", categoryId);
+  formData.append("user", JSON.stringify(user));
+  const res = await fetch("/api/import/zip", { method: "POST", body: formData });
+  const json = (await res.json()) as ZipImportResult & { error?: string };
+  if (!res.ok || json.error) throw new Error(json.error ?? "ZIPの取り込みに失敗しました");
+  return json;
+}
+
 export async function importPageApi(input: { categoryId: string; title: string; body: string }, user: User): Promise<{ pageId: string }> {
   const res = await fetch("/api/import", {
     method: "POST",

@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/app/providers";
 import { useAppData } from "@/app/data-provider";
-import { importPageApi } from "@/lib/client-api";
+import { importPageApi, importZipApi, type ZipImportResult } from "@/lib/client-api";
 
 const SUPPORTED = [
   { label: "Markdown", ext: ".md,.markdown" },
@@ -14,6 +15,7 @@ const SUPPORTED = [
   { label: "PDF", ext: ".pdf" },
   { label: "Word (.docx)", ext: ".docx" },
   { label: "Webページ(URL)", ext: "" },
+  { label: "Markdown ZIP(複数一括)", ext: ".zip" },
 ];
 const PLANNED = ["Confluenceエクスポート", "Notionエクスポート"];
 
@@ -34,6 +36,7 @@ export default function ImportPage() {
   const { data, loading, refresh } = useAppData();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const zipRef = useRef<HTMLInputElement>(null);
 
   const [sourceLabel, setSourceLabel] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
@@ -43,6 +46,11 @@ export default function ImportPage() {
   const [importing, setImporting] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [zipCategoryId, setZipCategoryId] = useState("all");
+  const [zipImporting, setZipImporting] = useState(false);
+  const [zipResult, setZipResult] = useState<ZipImportResult | null>(null);
+  const [zipError, setZipError] = useState<string | null>(null);
 
   if (loading || !user) {
     return (
@@ -139,6 +147,24 @@ export default function ImportPage() {
     }
   }
 
+  async function handleZipChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setZipError(null);
+    setZipResult(null);
+    setZipImporting(true);
+    try {
+      const result = await importZipApi(file, zipCategoryId, user);
+      setZipResult(result);
+      await refresh();
+    } catch (err) {
+      setZipError(err instanceof Error ? err.message : "ZIPの取り込みに失敗しました");
+    } finally {
+      setZipImporting(false);
+      if (zipRef.current) zipRef.current.value = "";
+    }
+  }
+
   return (
     <AppShell>
       <h2 className="text-[1.7rem] mb-5">データインポート</h2>
@@ -224,6 +250,68 @@ export default function ImportPage() {
           </div>
         </div>
       )}
+
+      <div className="border-t border-border mt-10 pt-8">
+        <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">Markdown ZIPを一括インポート</div>
+        <p className="text-ink-faint text-[0.82rem] mb-3 max-w-[60ch]">
+          複数の.mdファイルをまとめたZIPファイルから、1ファイルにつき1ページをまとめて作成します。プレビュー編集はできないため、内容は作成後に個別のページ編集画面で調整してください。
+        </p>
+        <div className="flex items-center gap-2 max-w-[560px] mb-3">
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium">追加先カテゴリ</span>
+            <select
+              value={zipCategoryId}
+              onChange={(e) => setZipCategoryId(e.target.value)}
+              className="border border-border rounded-s px-3 py-2 text-sm bg-surface-1 max-w-[280px]"
+            >
+              {data.categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div
+          onClick={() => zipRef.current?.click()}
+          className="border border-dashed border-border rounded-s px-4 py-8 text-center text-ink-faint text-[0.85rem] bg-surface-2 max-w-[560px] cursor-pointer hover:border-accent"
+        >
+          {zipImporting ? "取り込み中...(件数が多いと時間がかかります)" : "クリックしてZIPファイルを選択"}
+        </div>
+        <input ref={zipRef} type="file" accept=".zip" onChange={handleZipChange} className="hidden" />
+
+        {zipError && <div className="bg-danger-soft text-danger border border-danger rounded-s px-4 py-2.5 text-sm mt-4 max-w-[560px]">{zipError}</div>}
+
+        {zipResult && (
+          <div className="mt-4 max-w-[68ch]">
+            <div className="text-[0.85rem] mb-2">
+              <span className="text-accent-strong font-medium">{zipResult.created.length}件</span> 作成しました
+              {zipResult.failed.length > 0 && <span className="text-danger">(失敗 {zipResult.failed.length}件)</span>}
+            </div>
+            {zipResult.created.length > 0 && (
+              <ul className="flex flex-col gap-1 mb-3">
+                {zipResult.created.map((c) => (
+                  <li key={c.pageId} className="text-[0.82rem]">
+                    <Link href={`/pages/${c.pageId}`} className="text-accent-strong hover:underline">
+                      {c.title}
+                    </Link>
+                    <span className="text-ink-faint"> ({c.fileName})</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {zipResult.failed.length > 0 && (
+              <ul className="flex flex-col gap-1">
+                {zipResult.failed.map((f) => (
+                  <li key={f.fileName} className="text-[0.82rem] text-danger">
+                    {f.fileName}: {f.error}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }

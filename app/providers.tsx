@@ -6,7 +6,7 @@ import type { User } from "@/lib/types";
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  loginWithUser: (user: User) => void;
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
 }
 
@@ -29,12 +29,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  function loginWithUser(nextUser: User) {
-    setUser(nextUser);
+  async function login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+    const trimmed = email.trim();
+    if (!trimmed) return { ok: false, error: "メールアドレスを入力してください" };
+    if (!password) return { ok: false, error: "パスワードを入力してください" };
+
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed, password }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string; user?: User };
+      if (!json.ok || !json.user) {
+        return { ok: false, error: json.error ?? "ログインできませんでした" };
+      }
+      setUser(json.user);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(json.user));
+      } catch {
+        // ignore
+      }
+      return { ok: true };
     } catch {
-      // ignore
+      return { ok: false, error: "サーバーに接続できませんでした" };
     }
   }
 
@@ -47,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <AuthContext.Provider value={{ user, loading, loginWithUser, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {

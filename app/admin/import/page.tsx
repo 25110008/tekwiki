@@ -13,8 +13,9 @@ const SUPPORTED = [
   { label: "CSV", ext: ".csv" },
   { label: "PDF", ext: ".pdf" },
   { label: "Word (.docx)", ext: ".docx" },
+  { label: "Webページ(URL)", ext: "" },
 ];
-const PLANNED = ["HTML", "Confluenceエクスポート", "Notionエクスポート"];
+const PLANNED = ["Confluenceエクスポート", "Notionエクスポート"];
 
 const TEXT_EXTENSIONS = ["md", "markdown", "txt", "csv"];
 const SERVER_PARSE_EXTENSIONS = ["pdf", "docx"];
@@ -34,7 +35,8 @@ export default function ImportPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [sourceLabel, setSourceLabel] = useState<string | null>(null);
+  const [urlInput, setUrlInput] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [categoryId, setCategoryId] = useState("all");
@@ -66,7 +68,7 @@ export default function ImportPage() {
 
     if (SERVER_PARSE_EXTENSIONS.includes(ext)) {
       setParsing(true);
-      setFileName(file.name);
+      setSourceLabel(file.name);
       try {
         const formData = new FormData();
         formData.append("file", file);
@@ -76,7 +78,7 @@ export default function ImportPage() {
         setTitle(json.title ?? "");
         setBody(json.body ?? "");
       } catch (err) {
-        setFileName(null);
+        setSourceLabel(null);
         setError(err instanceof Error ? err.message : "ファイルの解析に失敗しました");
       } finally {
         setParsing(false);
@@ -93,12 +95,35 @@ export default function ImportPage() {
     reader.onload = () => {
       const content = String(reader.result ?? "");
       const { title: t, body: b } = splitTitleAndBody(file.name, content);
-      setFileName(file.name);
+      setSourceLabel(file.name);
       setTitle(t);
       setBody(b);
     };
     reader.onerror = () => setError("ファイルの読み込みに失敗しました");
     reader.readAsText(file, "utf-8");
+  }
+
+  async function handleUrlImport() {
+    const url = urlInput.trim();
+    if (!url || parsing) return;
+    setError(null);
+    setParsing(true);
+    try {
+      const res = await fetch("/api/import/from-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = (await res.json()) as { title?: string; body?: string; error?: string };
+      if (!res.ok || json.error) throw new Error(json.error ?? "取り込みに失敗しました");
+      setSourceLabel(url);
+      setTitle(json.title ?? "");
+      setBody(json.body ?? "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "取り込みに失敗しました");
+    } finally {
+      setParsing(false);
+    }
   }
 
   async function handleImport() {
@@ -134,18 +159,38 @@ export default function ImportPage() {
         ))}
       </div>
 
-      <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">ファイルを選択</div>
+      <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">Webページから取り込む</div>
+      <div className="flex gap-2 max-w-[560px] mb-6">
+        <input
+          value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleUrlImport();
+          }}
+          placeholder="https://example.com/article"
+          className="flex-1 border border-border rounded-s px-3 py-2 text-sm bg-surface-1"
+        />
+        <button
+          onClick={handleUrlImport}
+          disabled={parsing || !urlInput.trim()}
+          className="border border-border rounded-s px-4 py-2 text-sm hover:bg-surface-2 disabled:opacity-60 shrink-0"
+        >
+          取り込む
+        </button>
+      </div>
+
+      <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">またはファイルを選択</div>
       <div
         onClick={() => fileRef.current?.click()}
         className="border border-dashed border-border rounded-s px-4 py-8 text-center text-ink-faint text-[0.85rem] bg-surface-2 max-w-[560px] cursor-pointer hover:border-accent"
       >
-        {parsing ? "解析中..." : fileName ? `選択中: ${fileName}` : "クリックしてファイルを選択(Markdown / テキスト / CSV / PDF / Word)"}
+        {parsing ? "解析中..." : sourceLabel ? `選択中: ${sourceLabel}` : "クリックしてファイルを選択(Markdown / テキスト / CSV / PDF / Word)"}
       </div>
       <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.csv,.pdf,.docx" onChange={handleFileChange} className="hidden" />
 
       {error && <div className="bg-danger-soft text-danger border border-danger rounded-s px-4 py-2.5 text-sm mt-4 max-w-[560px]">{error}</div>}
 
-      {fileName && !parsing && (
+      {sourceLabel && !parsing && (
         <div className="mt-6 max-w-[68ch]">
           <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">変換プレビュー(内容は保存前に編集できます)</div>
           <div className="flex flex-col gap-4">

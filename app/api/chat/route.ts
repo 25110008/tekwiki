@@ -1,7 +1,25 @@
 import { NextResponse } from "next/server";
 import { excerpt, findRelevantPage } from "@/lib/chat";
-import { getAllData } from "@/lib/server/repo";
+import { getAllData, getPageEmbeddings } from "@/lib/server/repo";
+import { cosineSimilarity, embedText } from "@/lib/server/embeddings";
 import { runChatCompletion } from "@/lib/server/workers-ai";
+import type { Page } from "@/lib/types";
+
+const SIMILARITY_THRESHOLD = 0.45;
+
+async function findBySemanticSearch(question: string, pages: Page[]): Promise<Page | undefined> {
+  const embeddings = await getPageEmbeddings();
+  if (embeddings.length === 0) return undefined;
+
+  const questionVector = await embedText(question);
+  let best: { pageId: string; score: number } | null = null;
+  for (const e of embeddings) {
+    const score = cosineSimilarity(questionVector, e.vector);
+    if (!best || score > best.score) best = { pageId: e.pageId, score };
+  }
+  if (!best || best.score < SIMILARITY_THRESHOLD) return undefined;
+  return pages.find((p) => p.id === best!.pageId && !p.private && !p.archived);
+}
 
 export async function POST(request: Request) {
   const { question } = (await request.json()) as { question: string };
@@ -11,7 +29,19 @@ export async function POST(request: Request) {
   }
 
   const { pages, glossary } = await getAllData();
-  const match = findRelevantPage(q, pages, glossary);
+
+  let match: Page | undefined;
+  try {
+    match = await findBySemanticSearch(q, pages);
+  } catch (err) {
+    console.error("意味検索に失敗しました。キーワード検索にフォールバックします", err);
+  }
+
+  // 意味検索でヒットしなかった場合、キーワード一致で探す(非公開ページの案内メッセージを
+  // 出すためにも使う。非公開ページはそもそも埋め込みを持たないため意味検索ではヒットしない)。
+  if (!match) {
+    match = findRelevantPage(q, pages, glossary);
+  }
 
   if (!match) {
     return NextResponse.json({ text: "関連する情報が見つかりませんでした。別のキーワードで質問してみてください。", denied: false, cites: [] });

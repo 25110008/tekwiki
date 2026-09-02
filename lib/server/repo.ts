@@ -2,6 +2,7 @@
 // サーバー専用(APIルートからのみ呼び出すこと)。
 import { appendRow, deleteRowById, deleteRowsWhere, readSheet, readSheetsBatch, updateRowById } from "./sheets";
 import { deleteFile, downloadFile, uploadFile } from "./drive";
+import { embedText } from "./embeddings";
 import type {
   Approval,
   Category,
@@ -202,6 +203,45 @@ async function nextId(sheetName: string, prefix: string): Promise<string> {
   return `${prefix}${rows.length + 1}`;
 }
 
+// AIチャットの検索用に、公開ページの埋め込みベクトルを最新化する。
+// 失敗してもページ保存自体は失敗させない(検索精度が落ちるだけなので致命的ではない)。
+async function upsertPageEmbedding(pageId: string, body: string): Promise<void> {
+  try {
+    const vector = await embedText(body);
+    const patch = { pageId, vectorJson: JSON.stringify(vector), updatedAt: jstLabel() };
+    const updated = await updateRowById("PageEmbeddings", "pageId", pageId, patch);
+    if (!updated) await appendRow("PageEmbeddings", patch);
+  } catch (err) {
+    console.error("埋め込みの更新に失敗しました", err);
+  }
+}
+
+export async function getPageEmbeddings(): Promise<{ pageId: string; vector: number[] }[]> {
+  const rows = await readSheet("PageEmbeddings");
+  return rows
+    .filter((r) => r.vectorJson)
+    .map((r) => {
+      try {
+        return { pageId: r.pageId, vector: JSON.parse(r.vectorJson) as number[] };
+      } catch {
+        return null;
+      }
+    })
+    .filter((r): r is { pageId: string; vector: number[] } => r !== null);
+}
+
+async function removePageEmbedding(pageId: string): Promise<void> {
+  await deleteRowById("PageEmbeddings", "pageId", pageId).catch(() => {});
+}
+
+async function syncPageEmbedding(pageId: string, isPrivate: boolean, isArchived: boolean, body: string): Promise<void> {
+  if (isPrivate || isArchived) {
+    await removePageEmbedding(pageId);
+  } else {
+    await upsertPageEmbedding(pageId, body);
+  }
+}
+
 export async function submitPage(input: SubmitPageInput, user: User): Promise<SubmitResult> {
   const title = input.title.trim() || "無題のページ";
   const needsApproval = await requiresApproval(input.categoryId);
@@ -246,6 +286,7 @@ export async function submitPage(input: SubmitPageInput, user: User): Promise<Su
       summary: "内容を更新",
       bodySnapshot: input.body,
     });
+    await syncPageEmbedding(input.pageId, input.private, false, input.body);
     return { status: "published", pageId: input.pageId };
   }
 
@@ -271,6 +312,7 @@ export async function submitPage(input: SubmitPageInput, user: User): Promise<Su
     summary: "初版作成",
     bodySnapshot: input.body,
   });
+  await syncPageEmbedding(id, input.private, false, input.body);
   return { status: "published", pageId: id };
 }
 
@@ -305,6 +347,7 @@ export async function approveApproval(approvalId: string, reviewer: User): Promi
       summary: `内容を更新（承認済み・承認者: ${reviewer.name}）`,
       bodySnapshot: newData.body,
     });
+    await syncPageEmbedding(item.pageId, newData.private, false, newData.body);
   } else {
     const id = await nextId("Pages", "p");
     await appendRow("Pages", {
@@ -328,6 +371,7 @@ export async function approveApproval(approvalId: string, reviewer: User): Promi
       summary: `初版作成（承認済み・承認者: ${reviewer.name}）`,
       bodySnapshot: newData.body,
     });
+    await syncPageEmbedding(id, newData.private, false, newData.body);
   }
   await updateRowById("Approvals", "id", approvalId, { status: "approved" });
 }
@@ -355,12 +399,15 @@ export async function resolveInquiry(id: string): Promise<void> {
 
 export async function setPageArchived(pageId: string, archived: boolean): Promise<void> {
   await updateRowById("Pages", "id", pageId, { archived: archived ? "TRUE" : "FALSE" });
+  const page = await getPageById(pageId);
+  if (page) await syncPageEmbedding(pageId, page.private, archived, page.body);
 }
 
 export async function deletePage(pageId: string): Promise<void> {
   await deleteRowById("Pages", "id", pageId);
   await deleteRowsWhere("Attachments", "pageId", pageId);
   await deleteRowsWhere("History", "pageId", pageId);
+  await removePageEmbedding(pageId);
 }
 
 export interface CreatedFromImport {
@@ -392,6 +439,7 @@ export async function importPage(input: CreatedFromImport, user: User): Promise<
     summary: "データインポートで作成",
     bodySnapshot: input.body,
   });
+  await syncPageEmbedding(id, false, false, input.body);
   return id;
 }
 

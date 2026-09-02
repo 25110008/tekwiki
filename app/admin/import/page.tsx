@@ -11,8 +11,13 @@ const SUPPORTED = [
   { label: "Markdown", ext: ".md,.markdown" },
   { label: "テキスト", ext: ".txt" },
   { label: "CSV", ext: ".csv" },
+  { label: "PDF", ext: ".pdf" },
+  { label: "Word (.docx)", ext: ".docx" },
 ];
-const PLANNED = ["PDF", "Word (.docx)", "HTML", "Confluenceエクスポート", "Notionエクスポート"];
+const PLANNED = ["HTML", "Confluenceエクスポート", "Notionエクスポート"];
+
+const TEXT_EXTENSIONS = ["md", "markdown", "txt", "csv"];
+const SERVER_PARSE_EXTENSIONS = ["pdf", "docx"];
 
 function splitTitleAndBody(fileName: string, content: string): { title: string; body: string } {
   const lines = content.split(/\r?\n/);
@@ -34,6 +39,7 @@ export default function ImportPage() {
   const [body, setBody] = useState("");
   const [categoryId, setCategoryId] = useState("all");
   const [importing, setImporting] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (loading || !user) {
@@ -52,10 +58,37 @@ export default function ImportPage() {
     );
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+    if (SERVER_PARSE_EXTENSIONS.includes(ext)) {
+      setParsing(true);
+      setFileName(file.name);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/import/extract", { method: "POST", body: formData });
+        const json = (await res.json()) as { title?: string; body?: string; error?: string };
+        if (!res.ok || json.error) throw new Error(json.error ?? "解析に失敗しました");
+        setTitle(json.title ?? "");
+        setBody(json.body ?? "");
+      } catch (err) {
+        setFileName(null);
+        setError(err instanceof Error ? err.message : "ファイルの解析に失敗しました");
+      } finally {
+        setParsing(false);
+      }
+      return;
+    }
+
+    if (!TEXT_EXTENSIONS.includes(ext)) {
+      setError("対応していないファイル形式です");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const content = String(reader.result ?? "");
@@ -106,13 +139,13 @@ export default function ImportPage() {
         onClick={() => fileRef.current?.click()}
         className="border border-dashed border-border rounded-s px-4 py-8 text-center text-ink-faint text-[0.85rem] bg-surface-2 max-w-[560px] cursor-pointer hover:border-accent"
       >
-        {fileName ? `選択中: ${fileName}` : "クリックしてファイルを選択(Markdown / テキスト / CSV)"}
+        {parsing ? "解析中..." : fileName ? `選択中: ${fileName}` : "クリックしてファイルを選択(Markdown / テキスト / CSV / PDF / Word)"}
       </div>
-      <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.csv" onChange={handleFileChange} className="hidden" />
+      <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.csv,.pdf,.docx" onChange={handleFileChange} className="hidden" />
 
       {error && <div className="bg-danger-soft text-danger border border-danger rounded-s px-4 py-2.5 text-sm mt-4 max-w-[560px]">{error}</div>}
 
-      {fileName && (
+      {fileName && !parsing && (
         <div className="mt-6 max-w-[68ch]">
           <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">変換プレビュー(内容は保存前に編集できます)</div>
           <div className="flex flex-col gap-4">

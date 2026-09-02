@@ -70,7 +70,6 @@ export default function LoginPage() {
               placeholder="パスワード"
               className="w-full px-3 py-2.5 border border-border rounded-s bg-surface text-ink focus:border-accent focus:outline-none"
             />
-            <span className="block text-[0.78rem] text-ink-faint mt-1.5">デモでは任意の文字列でログインできます</span>
           </label>
 
           <button
@@ -81,8 +80,7 @@ export default function LoginPage() {
           </button>
 
           <div className="mt-5 p-3.5 bg-surface-2 border border-dashed border-border rounded-s text-[0.8rem] text-ink-muted">
-            デモ用ヒント：<code className="font-code bg-surface-3 px-1.5 py-0.5 rounded">@{ORG_DOMAIN}</code> 以外のドメインでは拒否されます。例：
-            <code className="font-code bg-surface-3 px-1.5 py-0.5 rounded">tanaka@{ORG_DOMAIN}</code>
+            初めてログインする際に入力したパスワードが、以降のログインに使うパスワードとして登録されます。次回以降は同じパスワードを入力してください。
           </div>
         </form>
       </div>

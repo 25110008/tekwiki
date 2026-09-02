@@ -34,7 +34,7 @@ function jstLabel(): string {
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
-type Row = Record<string, string>;
+export type Row = Record<string, string>;
 
 function parseCategories(rows: Row[]): Category[] {
   return rows.map((r) => ({ id: r.id, label: r.label, requiresApproval: bool(r.requiresApproval) }));
@@ -184,6 +184,16 @@ export async function getPages(): Promise<Page[]> {
 export async function getUserByEmail(email: string): Promise<User | undefined> {
   const users = await getUsers();
   return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+}
+
+// ログイン処理専用。パスワードハッシュ(秘密情報)を含む生の行を返す。
+export async function getUserRowByEmail(email: string): Promise<Row | undefined> {
+  const rows = await readSheet("Users");
+  return rows.find((r) => r.email.toLowerCase() === email.toLowerCase());
+}
+
+export async function setUserPasswordHash(userId: string, passwordHash: string): Promise<void> {
+  await updateRowById("Users", "id", userId, { passwordHash });
 }
 
 export interface SubmitPageInput {
@@ -495,4 +505,56 @@ export async function deleteAttachment(attachmentId: string): Promise<void> {
 export async function getPageById(id: string): Promise<Page | undefined> {
   const pages = await getPages();
   return pages.find((p) => p.id === id);
+}
+
+export async function getFaqs(): Promise<FaqItem[]> {
+  const rows = await readSheet("FAQ");
+  return parseFaqs(rows);
+}
+
+export async function createFaq(input: { question: string; answer: string; pageId?: string | null }): Promise<FaqItem> {
+  const rows = await readSheet("FAQ");
+  const id = await nextId("FAQ", "faq");
+  const sortOrder = rows.length + 1;
+  await appendRow("FAQ", {
+    id,
+    question: input.question,
+    answer: input.answer,
+    pageId: input.pageId ?? "",
+    sortOrder: String(sortOrder),
+  });
+  return { id, question: input.question, answer: input.answer, pageId: input.pageId ?? null };
+}
+
+export async function updateFaq(id: string, patch: { question: string; answer: string; pageId?: string | null }): Promise<void> {
+  await updateRowById("FAQ", "id", id, {
+    question: patch.question,
+    answer: patch.answer,
+    pageId: patch.pageId ?? "",
+  });
+}
+
+export async function deleteFaq(id: string): Promise<void> {
+  await deleteRowById("FAQ", "id", id);
+}
+
+export async function getGuidelines(): Promise<GuidelineSection[]> {
+  const rows = await readSheet("Guidelines");
+  return parseGuidelines(rows);
+}
+
+export async function createGuideline(input: { title: string; body: string }): Promise<GuidelineSection> {
+  const rows = await readSheet("Guidelines");
+  const id = await nextId("Guidelines", "gl");
+  const sortOrder = rows.length + 1;
+  await appendRow("Guidelines", { id, title: input.title, body: input.body, sortOrder: String(sortOrder) });
+  return { id, title: input.title, body: input.body };
+}
+
+export async function updateGuideline(id: string, patch: { title: string; body: string }): Promise<void> {
+  await updateRowById("Guidelines", "id", id, { title: patch.title, body: patch.body });
+}
+
+export async function deleteGuideline(id: string): Promise<void> {
+  await deleteRowById("Guidelines", "id", id);
 }

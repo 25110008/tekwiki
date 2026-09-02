@@ -28,7 +28,7 @@ export interface Page {
   updatedBy: string;
   updatedAt: string;
   archived: boolean;
-  attachments: { name: string; size: string }[];
+  attachments: { id: string; name: string; size: string }[];
   history: { who: string; when: string; what: string }[];
 }
 

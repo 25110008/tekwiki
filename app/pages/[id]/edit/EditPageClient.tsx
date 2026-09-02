@@ -28,6 +28,7 @@ export default function EditPageClient() {
           initialBody={page.body}
           initialTags={page.tags}
           initialPrivate={page.private}
+          initialAttachments={page.attachments}
         />
       )}
     </AppShell>

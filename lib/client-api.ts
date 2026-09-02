@@ -68,6 +68,30 @@ export async function resolveInquiryApi(id: string, user: User): Promise<void> {
   if (!res.ok) throw new Error("操作に失敗しました");
 }
 
+export interface Attachment {
+  id: string;
+  name: string;
+  size: string;
+}
+
+export async function uploadAttachmentApi(pageId: string, file: File): Promise<{ id: string; fileName: string; sizeBytes: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`/api/pages/${pageId}/attachments`, { method: "POST", body: formData });
+  const json = (await res.json()) as { attachment?: { id: string; fileName: string; sizeBytes: number }; error?: string };
+  if (!res.ok || json.error || !json.attachment) throw new Error(json.error ?? "アップロードに失敗しました");
+  return json.attachment;
+}
+
+export function attachmentDownloadUrl(attachmentId: string, user: User): string {
+  return `/api/attachments/${attachmentId}?user=${encodeURIComponent(JSON.stringify(user))}`;
+}
+
+export async function deleteAttachmentApi(attachmentId: string): Promise<void> {
+  const res = await fetch(`/api/attachments/${attachmentId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("削除に失敗しました");
+}
+
 export interface ChatAnswer {
   text: string;
   denied: boolean;

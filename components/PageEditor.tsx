@@ -6,7 +6,7 @@ import { useAuth } from "@/app/providers";
 import { useAppData } from "@/app/data-provider";
 import { catLabel, renderMarkdown } from "@/lib/wiki";
 import { clearDraft, draftKey, loadDraft, saveDraft } from "@/lib/store";
-import { submitPageApi } from "@/lib/client-api";
+import { attachmentDownloadUrl, deleteAttachmentApi, submitPageApi, uploadAttachmentApi, type Attachment } from "@/lib/client-api";
 
 const SNIPPETS: Record<string, [string, string]> = {
   heading: ["## ", ""],
@@ -34,6 +34,7 @@ export interface PageEditorProps {
   initialBody: string;
   initialTags?: string[];
   initialPrivate?: boolean;
+  initialAttachments?: Attachment[];
 }
 
 export function PageEditor({
@@ -44,12 +45,14 @@ export function PageEditor({
   initialBody,
   initialTags = [],
   initialPrivate = false,
+  initialAttachments = [],
 }: PageEditorProps) {
   const { user } = useAuth();
   const { data, refresh } = useAppData();
   const { categories, pages, glossary } = data;
   const router = useRouter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const parent = parentId ? pages.find((p) => p.id === parentId) : null;
 
@@ -62,6 +65,9 @@ export function PageEditor({
   const [preview, setPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments);
+  const [uploading, setUploading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [restorable, setRestorable] = useState<null | { title: string; body: string; categoryId: string; tags: string[]; private: boolean; savedAt: string }>(null);
 
   const key = draftKey(pageId, initialCategoryId, parentId);
@@ -134,6 +140,33 @@ export function PageEditor({
   function handleDiscardDraft() {
     clearDraft(key);
     setRestorable(null);
+  }
+
+  async function handleAttachmentUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !pageId) return;
+    setAttachmentError(null);
+    setUploading(true);
+    try {
+      const uploaded = await uploadAttachmentApi(pageId, file);
+      setAttachments((prev) => [...prev, { id: uploaded.id, name: uploaded.fileName, size: `${Math.max(1, Math.round(uploaded.sizeBytes / 1024))}KB` }]);
+      await refresh();
+    } catch (err) {
+      setAttachmentError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    }
+  }
+
+  async function handleAttachmentDelete(attachmentId: string) {
+    setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    try {
+      await deleteAttachmentApi(attachmentId);
+      await refresh();
+    } catch {
+      setAttachmentError("削除に失敗しました");
+    }
   }
 
   function handleCancel() {
@@ -304,9 +337,33 @@ export function PageEditor({
 
         <div className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">添付ファイル</span>
-          <div className="border border-dashed border-border rounded-s px-4 py-6 text-center text-ink-faint text-[0.82rem] bg-surface-2">
-            ファイルをドラッグ&ドロップ(デモでは未対応)
-          </div>
+          {attachmentError && <div className="bg-danger-soft text-danger border border-danger rounded-s px-3 py-2 text-[0.82rem]">{attachmentError}</div>}
+          {attachments.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {attachments.map((a) => (
+                <div key={a.id} className="flex items-center gap-2.5 px-3 py-2.5 border border-border rounded-s bg-surface-1 text-sm">
+                  <span className="flex-1 truncate">{a.name}</span>
+                  <span className="text-ink-faint text-[0.76rem]">{a.size}</span>
+                  <button onClick={() => handleAttachmentDelete(a.id)} className="text-danger text-[0.8rem] hover:underline">
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {pageId ? (
+            <div
+              onClick={() => attachmentInputRef.current?.click()}
+              className="border border-dashed border-border rounded-s px-4 py-6 text-center text-ink-faint text-[0.82rem] bg-surface-2 cursor-pointer hover:border-accent"
+            >
+              {uploading ? "アップロード中..." : "クリックしてファイルを選択(最大20MB)"}
+            </div>
+          ) : (
+            <div className="border border-dashed border-border rounded-s px-4 py-6 text-center text-ink-faint text-[0.82rem] bg-surface-2">
+              ページを保存すると添付ファイルを追加できます
+            </div>
+          )}
+          <input ref={attachmentInputRef} type="file" onChange={handleAttachmentUpload} className="hidden" />
         </div>
 
         <div className="flex flex-wrap gap-2.5 pt-1">

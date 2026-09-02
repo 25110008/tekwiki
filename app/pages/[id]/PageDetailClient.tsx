@@ -8,7 +8,7 @@ import { PageCard } from "@/components/PageCard";
 import { useAuth } from "@/app/providers";
 import { useAppData } from "@/app/data-provider";
 import { canView, catLabel, getBacklinks, getChildren, renderMarkdown } from "@/lib/wiki";
-import { setPageArchivedApi } from "@/lib/client-api";
+import { attachmentDownloadUrl, setPageArchivedApi } from "@/lib/client-api";
 import type { Category, GlossaryEntry, Page } from "@/lib/types";
 
 function LockIcon() {
@@ -192,10 +192,14 @@ function PageBody({
               <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mt-6 mb-3">添付ファイル</div>
               <div className="flex flex-col gap-2 max-w-[68ch]">
                 {page.attachments.map((a) => (
-                  <div key={a.name} className="flex items-center gap-2.5 px-3 py-2.5 border border-border rounded-s bg-surface-2 text-sm">
+                  <a
+                    key={a.id}
+                    href={user ? attachmentDownloadUrl(a.id, user) : undefined}
+                    className="flex items-center gap-2.5 px-3 py-2.5 border border-border rounded-s bg-surface-2 text-sm hover:border-accent"
+                  >
                     <span>{a.name}</span>
                     <span className="ml-auto text-ink-faint text-[0.76rem]">{a.size}</span>
-                  </div>
+                  </a>
                 ))}
               </div>
             </>

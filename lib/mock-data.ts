@@ -31,7 +31,7 @@ export const PAGES: Page[] = [
     tags: ["オンボーディング", "ルール"], private: false,
     body: "初出社日の流れ、貸与PCのセットアップ、社内ツールのアカウント発行手順をまとめています。\n\n経費精算や有給の申請方法についても、それぞれのページを事前に確認しておきましょう。",
     updatedBy: "人事部・鈴木", updatedAt: "2026-08-20", archived: false,
-    attachments: [{ name: "オンボーディングチェックリスト.pdf", size: "412KB" }],
+    attachments: [{ id: "seed", name: "オンボーディングチェックリスト.pdf", size: "412KB" }],
     history: [
       { who: "鈴木 一郎(人事部)", when: "2026-08-20 10:12", what: "貸与PC手順のスクリーンショットを更新" },
       { who: "鈴木 一郎(人事部)", when: "2026-06-02 09:40", what: "初版作成" },
@@ -42,7 +42,7 @@ export const PAGES: Page[] = [
     tags: ["ルール", "テンプレート"], private: false,
     body: "経費精算システムへの入力方法と、領収書の提出ルールを説明します。1万円を超える立替は事前申請が必要です。締め日は毎月25日です。",
     updatedBy: "総務部・伊藤", updatedAt: "2026-08-28", archived: false,
-    attachments: [{ name: "経費精算フォーム.xlsx", size: "38KB" }],
+    attachments: [{ id: "seed", name: "経費精算フォーム.xlsx", size: "38KB" }],
     history: [{ who: "伊藤 真弓(総務部)", when: "2026-08-28 14:03", what: "締め日の記載を追加" }],
   },
   {
@@ -61,7 +61,7 @@ export const PAGES: Page[] = [
     tags: ["手順書", "セキュリティ"], private: true,
     body: "障害検知時は、まずオンコール担当に連絡し、影響範囲を切り分けます。重大障害の場合は経営陣への一次報告を30分以内に行ってください。詳細な連絡先リストは添付を参照。",
     updatedBy: "開発部・佐藤", updatedAt: "2026-08-15", archived: false,
-    attachments: [{ name: "緊急連絡先一覧.pdf", size: "120KB" }],
+    attachments: [{ id: "seed", name: "緊急連絡先一覧.pdf", size: "120KB" }],
     history: [{ who: "佐藤 健(開発部)", when: "2026-08-15 09:00", what: "連絡先リストを更新" }],
   },
   {
@@ -69,7 +69,7 @@ export const PAGES: Page[] = [
     tags: ["テンプレート"], private: false,
     body: "共通の見積書テンプレートを使用してください。値引き率に応じて承認者が変わります。\n\n| 値引き率 | 承認者 |\n| --- | --- |\n| 〜10% | 担当者のみ |\n| 〜20% | 上長 |\n| 20%以上 | 部長 |\n\nテンプレートの改変は禁止です。",
     updatedBy: "営業部・田中", updatedAt: "2026-08-10", archived: false,
-    attachments: [{ name: "見積書テンプレート.xlsx", size: "54KB" }],
+    attachments: [{ id: "seed", name: "見積書テンプレート.xlsx", size: "54KB" }],
     history: [{ who: "田中 沙織(営業部)", when: "2026-08-10 13:30", what: "承認フローの記載を追加" }],
   },
   {

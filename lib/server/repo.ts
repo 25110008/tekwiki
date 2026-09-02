@@ -1,6 +1,7 @@
 // Googleスプレッドシートを実データとして扱うデータアクセス層。
 // サーバー専用(APIルートからのみ呼び出すこと)。
 import { appendRow, deleteRowById, deleteRowsWhere, readSheet, readSheetsBatch, updateRowById } from "./sheets";
+import { deleteFile, downloadFile, uploadFile } from "./drive";
 import type {
   Approval,
   Category,
@@ -52,7 +53,7 @@ function parsePages(pageRows: Row[], attachmentRows: Row[], historyRows: Row[]):
   return pageRows.map((r) => {
     const attachments = attachmentRows
       .filter((a) => a.pageId === r.id)
-      .map((a) => ({ name: a.fileName, size: formatBytes(Number(a.sizeBytes) || 0) }));
+      .map((a) => ({ id: a.id, name: a.fileName, size: formatBytes(Number(a.sizeBytes) || 0) }));
     const history = historyRows
       .filter((h) => h.pageId === r.id)
       .map((h) => ({ who: h.editedBy, when: h.editedAt, what: h.summary }))
@@ -168,6 +169,15 @@ export async function requiresApproval(categoryId: string): Promise<boolean> {
 export async function getUsers(): Promise<User[]> {
   const rows = await readSheet("Users");
   return parseUsers(rows);
+}
+
+export async function getPages(): Promise<Page[]> {
+  const [pageRows, attachmentRows, historyRows] = await Promise.all([
+    readSheet("Pages"),
+    readSheet("Attachments"),
+    readSheet("History"),
+  ]);
+  return parsePages(pageRows, attachmentRows, historyRows);
 }
 
 export async function getUserByEmail(email: string): Promise<User | undefined> {
@@ -383,4 +393,58 @@ export async function importPage(input: CreatedFromImport, user: User): Promise<
     bodySnapshot: input.body,
   });
   return id;
+}
+
+export interface AttachmentInfo {
+  id: string;
+  pageId: string;
+  fileName: string;
+  driveFileId: string;
+  sizeBytes: number;
+}
+
+export async function addAttachment(pageId: string, fileName: string, mimeType: string, bytes: Uint8Array): Promise<AttachmentInfo> {
+  const uploaded = await uploadFile(fileName, mimeType, bytes);
+  const id = await nextId("Attachments", "att");
+  await appendRow("Attachments", {
+    id,
+    pageId,
+    fileName: uploaded.fileName,
+    driveFileId: uploaded.driveFileId,
+    sizeBytes: uploaded.sizeBytes,
+    uploadedAt: jstLabel(),
+  });
+  return { id, pageId, fileName: uploaded.fileName, driveFileId: uploaded.driveFileId, sizeBytes: uploaded.sizeBytes };
+}
+
+export async function getAttachment(attachmentId: string): Promise<(AttachmentInfo & { page?: Page }) | undefined> {
+  const rows = await readSheet("Attachments");
+  const row = rows.find((r) => r.id === attachmentId);
+  if (!row) return undefined;
+  const page = await getPageById(row.pageId);
+  return {
+    id: row.id,
+    pageId: row.pageId,
+    fileName: row.fileName,
+    driveFileId: row.driveFileId,
+    sizeBytes: Number(row.sizeBytes) || 0,
+    page,
+  };
+}
+
+export async function downloadAttachment(driveFileId: string) {
+  return downloadFile(driveFileId);
+}
+
+export async function deleteAttachment(attachmentId: string): Promise<void> {
+  const rows = await readSheet("Attachments");
+  const row = rows.find((r) => r.id === attachmentId);
+  if (!row) return;
+  await deleteFile(row.driveFileId).catch(() => {});
+  await deleteRowById("Attachments", "id", attachmentId);
+}
+
+export async function getPageById(id: string): Promise<Page | undefined> {
+  const pages = await getPages();
+  return pages.find((p) => p.id === id);
 }

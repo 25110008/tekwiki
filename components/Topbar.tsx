@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useChat } from "@/app/chat-provider";
+import { NotificationBell } from "./NotificationBell";
 
 export function Topbar() {
   const { user, logout } = useAuth();
@@ -48,6 +49,7 @@ export function Topbar() {
         </svg>
         AIに質問
       </button>
+      {user.role === "admin" && <NotificationBell />}
       <div className="relative">
         <button
           onClick={() => setMenuOpen((v) => !v)}

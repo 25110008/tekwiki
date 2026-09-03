@@ -449,12 +449,16 @@ export async function deletePage(pageId: string): Promise<void> {
   for (const a of attachments.results) {
     if (a.kvKey) await deleteAttachmentBytes(a.kvKey).catch(() => {});
   }
+  // 外部キー制約があるため、pagesを参照している行を先に削除・解除してから本体を削除する。
   await db.batch([
-    db.prepare(`DELETE FROM pages WHERE id = ?`).bind(pageId),
+    db.prepare(`DELETE FROM page_embeddings WHERE page_id = ?`).bind(pageId),
     db.prepare(`DELETE FROM attachments WHERE page_id = ?`).bind(pageId),
     db.prepare(`DELETE FROM history WHERE page_id = ?`).bind(pageId),
+    db.prepare(`DELETE FROM glossary WHERE page_id = ?`).bind(pageId),
+    db.prepare(`UPDATE pages SET parent_id = NULL WHERE parent_id = ?`).bind(pageId),
+    db.prepare(`UPDATE faq SET page_id = NULL WHERE page_id = ?`).bind(pageId),
+    db.prepare(`DELETE FROM pages WHERE id = ?`).bind(pageId),
   ]);
-  await removePageEmbedding(pageId);
 }
 
 export interface CreatedFromImport {

@@ -258,6 +258,18 @@ interface ParentRow {
   parentId: string | null;
 }
 
+// ページのカテゴリ(所属)を変更した際、子孫ページのカテゴリも合わせて変更する。
+// 子ページは作成時に親のカテゴリへ固定される仕様(PageEditorでカテゴリ選択欄が
+// 「親ページに合わせて自動設定」になる)なので、親のカテゴリが後から変わった場合も
+// 追従させないと、子ページだけ旧カテゴリに取り残されてしまう。
+async function cascadeCategoryToDescendants(db: D1Database, pageId: string, categoryId: string): Promise<void> {
+  const { results } = await db.prepare(`SELECT id FROM pages WHERE parent_id = ?`).bind(pageId).all<{ id: string }>();
+  for (const child of results) {
+    await db.prepare(`UPDATE pages SET category_id = ? WHERE id = ?`).bind(categoryId, child.id).run();
+    await cascadeCategoryToDescendants(db, child.id, categoryId);
+  }
+}
+
 async function getPageLevel(db: D1Database, pageId: string): Promise<number> {
   let level = 0;
   let current: string | null = pageId;
@@ -348,10 +360,14 @@ export async function submitPage(input: SubmitPageInput, user: User): Promise<Su
   }
 
   if (input.pageId) {
+    const before = await db.prepare(`SELECT category_id AS categoryId FROM pages WHERE id = ?`).bind(input.pageId).first<{ categoryId: string }>();
     await db
       .prepare(`UPDATE pages SET title = ?, body = ?, category_id = ?, is_private = ?, tags = ?, updated_by = ?, updated_at = ? WHERE id = ?`)
       .bind(title, input.body, input.categoryId, input.private ? 1 : 0, input.tags.join(","), user.name, jstLabel(), input.pageId)
       .run();
+    if (before && before.categoryId !== input.categoryId) {
+      await cascadeCategoryToDescendants(db, input.pageId, input.categoryId);
+    }
     await db
       .prepare(`INSERT INTO history (id, page_id, edited_by, edited_at, summary, body_snapshot) VALUES (?, ?, ?, ?, '内容を更新', ?)`)
       .bind(await nextId("history", "h"), input.pageId, user.name, jstLabel(), input.body)
@@ -392,10 +408,14 @@ export async function approveApproval(approvalId: string, reviewer: User): Promi
   };
 
   if (item.pageId) {
+    const before = await db.prepare(`SELECT category_id AS categoryId FROM pages WHERE id = ?`).bind(item.pageId).first<{ categoryId: string }>();
     await db
       .prepare(`UPDATE pages SET title = ?, body = ?, category_id = ?, is_private = ?, tags = ?, updated_by = ?, updated_at = ? WHERE id = ?`)
       .bind(newData.title, newData.body, newData.categoryId, newData.private ? 1 : 0, newData.tags.join(","), item.author, jstLabel(), item.pageId)
       .run();
+    if (before && before.categoryId !== newData.categoryId) {
+      await cascadeCategoryToDescendants(db, item.pageId, newData.categoryId);
+    }
     await db
       .prepare(`INSERT INTO history (id, page_id, edited_by, edited_at, summary, body_snapshot) VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(await nextId("history", "h"), item.pageId, item.author, jstLabel(), `内容を更新（承認済み・承認者: ${reviewer.name}）`, newData.body)

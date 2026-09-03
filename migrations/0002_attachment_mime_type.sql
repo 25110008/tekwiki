@@ -1,0 +1,1 @@
+ALTER TABLE attachments ADD COLUMN mime_type TEXT NOT NULL DEFAULT '';

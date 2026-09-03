@@ -17,10 +17,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "権限がありません" }, { status: 403 });
   }
 
-  const { bytes, mimeType } = await downloadAttachment(attachment.driveFileId);
-  return new NextResponse(bytes as BodyInit, {
+  const downloaded = await downloadAttachment(attachment.kvKey);
+  if (!downloaded) {
+    return NextResponse.json({ error: "ファイルの実体が見つかりません" }, { status: 404 });
+  }
+  return new NextResponse(downloaded.bytes as BodyInit, {
     headers: {
-      "Content-Type": mimeType,
+      "Content-Type": attachment.mimeType || "application/octet-stream",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
     },
   });

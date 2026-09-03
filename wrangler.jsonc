@@ -7,5 +7,18 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tekwiki-db",
+      "database_id": "645c7dc1-849f-41cd-9818-3d0a6d5d8a4a"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "ATTACHMENTS",
+      "id": "7edffbc850ad416499ef837911cf246f"
+    }
+  ]
 }

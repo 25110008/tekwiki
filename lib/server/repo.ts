@@ -283,6 +283,39 @@ async function getPageLevel(db: D1Database, pageId: string): Promise<number> {
   return level;
 }
 
+// candidateId(移動先の親候補)が、movingPageIdの子孫(自分自身を含む)かどうかを判定する。
+// ページを自分の子孫の下に移動しようとする循環参照を防ぐために使う。
+async function isSelfOrDescendant(db: D1Database, candidateId: string, movingPageId: string): Promise<boolean> {
+  let current: string | null = candidateId;
+  while (current) {
+    if (current === movingPageId) return true;
+    const row: ParentRow | null = await db.prepare(`SELECT parent_id AS parentId FROM pages WHERE id = ?`).bind(current).first<ParentRow>();
+    current = row?.parentId ?? null;
+  }
+  return false;
+}
+
+// pageIdの配下にある子孫の中で最も深い階層までの段数(子が無ければ0)。
+// ページを移動する際、そのページ自身だけでなく配下の子孫ページも3階層制限を
+// 超えないかを判定するために使う。
+async function getSubtreeHeight(db: D1Database, pageId: string): Promise<number> {
+  const { results } = await db.prepare(`SELECT id FROM pages WHERE parent_id = ?`).bind(pageId).all<{ id: string }>();
+  if (results.length === 0) return 0;
+  let max = 0;
+  for (const child of results) {
+    max = Math.max(max, 1 + (await getSubtreeHeight(db, child.id)));
+  }
+  return max;
+}
+
+// 親ページを指定した場合、カテゴリは常に親ページに合わせる(クライアント側の表示上の都合ではなく
+// サーバー側でも強制することで、親子でカテゴリがずれるのを防ぐ)。
+async function resolveCategoryId(db: D1Database, parentId: string | null, fallbackCategoryId: string): Promise<string> {
+  if (!parentId) return fallbackCategoryId;
+  const parent = await db.prepare(`SELECT category_id AS categoryId FROM pages WHERE id = ?`).bind(parentId).first<{ categoryId: string }>();
+  return parent?.categoryId ?? fallbackCategoryId;
+}
+
 // AIチャットの検索用に、公開ページの埋め込みベクトルを最新化する。
 // 失敗してもページ保存自体は失敗させない(検索精度が落ちるだけなので致命的ではない)。
 async function upsertPageEmbedding(pageId: string, title: string, body: string): Promise<void> {
@@ -335,12 +368,22 @@ export async function submitPage(input: SubmitPageInput, user: User): Promise<Su
   const title = input.title.trim() || "無題のページ";
 
   if (input.parentId) {
-    if ((await getPageLevel(db, input.parentId)) >= MAX_PAGE_LEVEL) {
-      return { status: "rejected", error: "3階層を超える子ページは作成できません" };
+    if (input.pageId && input.parentId === input.pageId) {
+      return { status: "rejected", error: "自分自身を親ページにはできません" };
+    }
+    if (input.pageId && (await isSelfOrDescendant(db, input.parentId, input.pageId))) {
+      return { status: "rejected", error: "自分の子ページ(子孫を含む)を親ページにはできません" };
+    }
+    const subtreeHeight = input.pageId ? await getSubtreeHeight(db, input.pageId) : 0;
+    if ((await getPageLevel(db, input.parentId)) + 1 + subtreeHeight > MAX_PAGE_LEVEL) {
+      return { status: "rejected", error: "3階層を超えるため、この位置には移動できません" };
     }
   }
 
-  const needsApproval = await requiresApproval(input.categoryId);
+  // 親ページを指定した場合、カテゴリは常に親ページに合わせる(クライアントの入力値より優先する)。
+  const categoryId = await resolveCategoryId(db, input.parentId, input.categoryId);
+
+  const needsApproval = await requiresApproval(categoryId);
 
   if (needsApproval) {
     const id = await nextId("approvals", "ap");
@@ -350,10 +393,10 @@ export async function submitPage(input: SubmitPageInput, user: User): Promise<Su
         id,
         input.pageId ?? null,
         title,
-        input.categoryId,
+        categoryId,
         user.name,
         jstLabel(),
-        JSON.stringify({ title, body: input.body, categoryId: input.categoryId, private: input.private, tags: input.tags, parentId: input.parentId })
+        JSON.stringify({ title, body: input.body, categoryId, private: input.private, tags: input.tags, parentId: input.parentId })
       )
       .run();
     return { status: "pending" };
@@ -362,11 +405,11 @@ export async function submitPage(input: SubmitPageInput, user: User): Promise<Su
   if (input.pageId) {
     const before = await db.prepare(`SELECT category_id AS categoryId FROM pages WHERE id = ?`).bind(input.pageId).first<{ categoryId: string }>();
     await db
-      .prepare(`UPDATE pages SET title = ?, body = ?, category_id = ?, is_private = ?, tags = ?, updated_by = ?, updated_at = ? WHERE id = ?`)
-      .bind(title, input.body, input.categoryId, input.private ? 1 : 0, input.tags.join(","), user.name, jstLabel(), input.pageId)
+      .prepare(`UPDATE pages SET title = ?, body = ?, category_id = ?, parent_id = ?, is_private = ?, tags = ?, updated_by = ?, updated_at = ? WHERE id = ?`)
+      .bind(title, input.body, categoryId, input.parentId ?? null, input.private ? 1 : 0, input.tags.join(","), user.name, jstLabel(), input.pageId)
       .run();
-    if (before && before.categoryId !== input.categoryId) {
-      await cascadeCategoryToDescendants(db, input.pageId, input.categoryId);
+    if (before && before.categoryId !== categoryId) {
+      await cascadeCategoryToDescendants(db, input.pageId, categoryId);
     }
     await db
       .prepare(`INSERT INTO history (id, page_id, edited_by, edited_at, summary, body_snapshot) VALUES (?, ?, ?, ?, '内容を更新', ?)`)
@@ -381,7 +424,7 @@ export async function submitPage(input: SubmitPageInput, user: User): Promise<Su
     .prepare(
       `INSERT INTO pages (id, category_id, parent_id, title, tags, is_private, body, updated_by, updated_at, archived, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
     )
-    .bind(id, input.categoryId, input.parentId ?? null, title, input.tags.join(","), input.private ? 1 : 0, input.body, user.name, jstLabel(), nowIso())
+    .bind(id, categoryId, input.parentId ?? null, title, input.tags.join(","), input.private ? 1 : 0, input.body, user.name, jstLabel(), nowIso())
     .run();
   await db
     .prepare(`INSERT INTO history (id, page_id, edited_by, edited_at, summary, body_snapshot) VALUES (?, ?, ?, ?, '初版作成', ?)`)
@@ -410,8 +453,8 @@ export async function approveApproval(approvalId: string, reviewer: User): Promi
   if (item.pageId) {
     const before = await db.prepare(`SELECT category_id AS categoryId FROM pages WHERE id = ?`).bind(item.pageId).first<{ categoryId: string }>();
     await db
-      .prepare(`UPDATE pages SET title = ?, body = ?, category_id = ?, is_private = ?, tags = ?, updated_by = ?, updated_at = ? WHERE id = ?`)
-      .bind(newData.title, newData.body, newData.categoryId, newData.private ? 1 : 0, newData.tags.join(","), item.author, jstLabel(), item.pageId)
+      .prepare(`UPDATE pages SET title = ?, body = ?, category_id = ?, parent_id = ?, is_private = ?, tags = ?, updated_by = ?, updated_at = ? WHERE id = ?`)
+      .bind(newData.title, newData.body, newData.categoryId, newData.parentId ?? null, newData.private ? 1 : 0, newData.tags.join(","), item.author, jstLabel(), item.pageId)
       .run();
     if (before && before.categoryId !== newData.categoryId) {
       await cascadeCategoryToDescendants(db, item.pageId, newData.categoryId);

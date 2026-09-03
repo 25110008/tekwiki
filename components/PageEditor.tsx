@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useAppData } from "@/app/data-provider";
-import { catLabel, renderMarkdown } from "@/lib/wiki";
+import { canView, catLabel, renderMarkdown } from "@/lib/wiki";
 import { clearDraft, draftKey, loadDraft, saveDraft } from "@/lib/store";
 import { attachmentDownloadUrl, deleteAttachmentApi, submitPageApi, uploadAttachmentApi, type Attachment } from "@/lib/client-api";
 
@@ -37,9 +37,26 @@ export interface PageEditorProps {
   initialAttachments?: Attachment[];
 }
 
+// pageIdの配下(子・孫...)にあるページのidを再帰的に集める。
+// 親ページ変更のドロップダウンで、自分自身や自分の子孫を選べないようにするために使う。
+function collectDescendantIds(pageId: string, pages: { id: string; parentId: string | null }[]): Set<string> {
+  const ids = new Set<string>();
+  const stack = [pageId];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const p of pages) {
+      if (p.parentId === current && !ids.has(p.id)) {
+        ids.add(p.id);
+        stack.push(p.id);
+      }
+    }
+  }
+  return ids;
+}
+
 export function PageEditor({
   pageId,
-  parentId,
+  parentId: initialParentId,
   initialCategoryId,
   initialTitle,
   initialBody,
@@ -54,7 +71,27 @@ export function PageEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
+  const [parentId, setParentId] = useState<string | null>(initialParentId);
   const parent = parentId ? pages.find((p) => p.id === parentId) : null;
+
+  const parentCandidates = pageId
+    ? (() => {
+        const blocked = collectDescendantIds(pageId, pages);
+        blocked.add(pageId);
+        return pages
+          .filter((p) => !blocked.has(p.id) && !p.archived && canView(p, user))
+          .slice()
+          .sort((a, b) => catLabel(a.categoryId, categories).localeCompare(catLabel(b.categoryId, categories)) || a.title.localeCompare(b.title));
+      })()
+    : [];
+
+  function handleParentChange(newParentId: string) {
+    setParentId(newParentId || null);
+    if (newParentId) {
+      const newParent = pages.find((p) => p.id === newParentId);
+      if (newParent) setCategoryId(newParent.categoryId);
+    }
+  }
 
   const [categoryId, setCategoryId] = useState(initialCategoryId);
   const [title, setTitle] = useState(initialTitle);
@@ -70,7 +107,7 @@ export function PageEditor({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [restorable, setRestorable] = useState<null | { title: string; body: string; categoryId: string; tags: string[]; private: boolean; savedAt: string }>(null);
 
-  const key = draftKey(pageId, initialCategoryId, parentId);
+  const key = draftKey(pageId, initialCategoryId, initialParentId);
   const latest = useRef({ categoryId, title, tags, isPrivate, body });
   useEffect(() => {
     latest.current = { categoryId, title, tags, isPrivate, body };
@@ -264,6 +301,27 @@ export function PageEditor({
             </div>
           </label>
         </div>
+
+        {pageId && (
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium">親ページ</span>
+            <select
+              value={parentId ?? ""}
+              onChange={(e) => handleParentChange(e.target.value)}
+              className="border border-border rounded-s px-3 py-2 text-sm bg-surface-1"
+            >
+              <option value="">なし(最上位ページ)</option>
+              {parentCandidates.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {catLabel(p.categoryId, categories)} / {p.title}
+                </option>
+              ))}
+            </select>
+            <span className="text-ink-faint text-[0.78rem]">
+              親ページを変更すると、カテゴリも親ページに合わせて変わります(このページの子ページがある場合、それらも一緒に移動します)
+            </span>
+          </label>
+        )}
 
         <div className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">タグ</span>

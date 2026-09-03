@@ -140,6 +140,15 @@ export async function askChatApi(question: string): Promise<ChatAnswer> {
   return res.json();
 }
 
+export async function sendChatFeedbackApi(question: string, answer: string, rating: "up" | "down", user: User): Promise<void> {
+  const res = await fetch("/api/chat/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, answer, rating, user }),
+  });
+  if (!res.ok) throw new Error("フィードバックの送信に失敗しました");
+}
+
 export interface ZipImportResult {
   created: { fileName: string; pageId: string; title: string; type: "page" | "folder" }[];
   failed: { fileName: string; error: string }[];

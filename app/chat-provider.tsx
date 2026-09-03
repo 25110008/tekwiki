@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./providers";
 import { CHAT_SUGGESTIONS } from "@/lib/chat";
-import { askChatApi } from "@/lib/client-api";
+import { askChatApi, sendChatFeedbackApi } from "@/lib/client-api";
 import { BrandMark } from "@/components/BrandMark";
 
 interface ChatMessage {
@@ -12,6 +12,8 @@ interface ChatMessage {
   text: string;
   denied?: boolean;
   cites?: { id: string; title: string }[];
+  question?: string;
+  feedback?: "up" | "down" | null;
 }
 
 interface ChatContextValue {
@@ -46,11 +48,22 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setThinking(true);
     try {
       const answer = await askChatApi(trimmed);
-      setLog((prev) => [...prev, { role: "ai", ...answer }]);
+      setLog((prev) => [...prev, { role: "ai", ...answer, question: trimmed, feedback: null }]);
     } catch {
-      setLog((prev) => [...prev, { role: "ai", text: "エラーが発生しました。時間をおいて再度お試しください。", cites: [] }]);
+      setLog((prev) => [...prev, { role: "ai", text: "エラーが発生しました。時間をおいて再度お試しください。", cites: [], question: trimmed, feedback: null }]);
     } finally {
       setThinking(false);
+    }
+  }
+
+  async function rate(index: number, rating: "up" | "down") {
+    const message = log[index];
+    if (!user || !message.question || message.feedback) return;
+    setLog((prev) => prev.map((m, i) => (i === index ? { ...m, feedback: rating } : m)));
+    try {
+      await sendChatFeedbackApi(message.question, message.text, rating, user);
+    } catch {
+      setLog((prev) => prev.map((m, i) => (i === index ? { ...m, feedback: null } : m)));
     }
   }
 
@@ -107,6 +120,28 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                               {c.title}
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {m.question && (
+                        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-border">
+                          <span className="text-ink-faint text-[0.74rem]">この回答は役に立ちましたか？</span>
+                          <button
+                            onClick={() => rate(i, "up")}
+                            disabled={!!m.feedback}
+                            className={`text-[0.9rem] leading-none disabled:opacity-40 ${m.feedback === "up" ? "" : "opacity-60 hover:opacity-100"}`}
+                            aria-label="役に立った"
+                          >
+                            👍
+                          </button>
+                          <button
+                            onClick={() => rate(i, "down")}
+                            disabled={!!m.feedback}
+                            className={`text-[0.9rem] leading-none disabled:opacity-40 ${m.feedback === "down" ? "" : "opacity-60 hover:opacity-100"}`}
+                            aria-label="役に立たなかった"
+                          >
+                            👎
+                          </button>
+                          {m.feedback && <span className="text-ink-faint text-[0.74rem]">フィードバックを送信しました</span>}
                         </div>
                       )}
                     </div>

@@ -443,6 +443,14 @@ export async function rejectApproval(approvalId: string): Promise<void> {
   await db.prepare(`DELETE FROM approvals WHERE id = ?`).bind(approvalId).run();
 }
 
+export async function recordChatFeedback(input: { question: string; answer: string; rating: "up" | "down"; userId: string }): Promise<void> {
+  const db = await getDb();
+  await db
+    .prepare(`INSERT INTO chat_feedback (id, question, answer, rating, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(await nextId("chat_feedback", "cf"), input.question, input.answer, input.rating, input.userId, jstLabel())
+    .run();
+}
+
 export async function createInquiry(input: { type: string; subject: string; body: string; authorId: string; authorName: string }): Promise<void> {
   const db = await getDb();
   await db

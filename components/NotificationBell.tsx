@@ -9,7 +9,8 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
 
   const openInquiries = data.inquiries.filter((i) => i.status !== "resolved");
-  const count = data.approvals.length + openInquiries.length;
+  const unassignedUsers = data.users.filter((u) => !u.department);
+  const count = data.approvals.length + openInquiries.length + unassignedUsers.length;
 
   return (
     <div className="relative">
@@ -63,6 +64,18 @@ export function NotificationBell() {
                     <div className="text-ink-faint text-[0.74rem] mt-0.5">
                       {i.authorName}・{i.createdAt}
                     </div>
+                  </Link>
+                ))}
+                {unassignedUsers.map((u) => (
+                  <Link
+                    key={`user-${u.id}`}
+                    href="/admin/users"
+                    onClick={() => setOpen(false)}
+                    className="px-3.5 py-2.5 border-b border-border text-[0.82rem] hover:bg-surface-2"
+                  >
+                    <span className="text-accent-strong font-medium">部署未割り当て：</span>
+                    {u.name}
+                    <div className="text-ink-faint text-[0.74rem] mt-0.5">{u.email}</div>
                   </Link>
                 ))}
               </div>

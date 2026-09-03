@@ -1,6 +1,33 @@
 // クライアントから各APIルートを呼び出すためのヘルパー。
 import type { DraftInput } from "./store";
-import type { FaqItem, GuidelineSection, User } from "./types";
+import type { FaqItem, GuidelineSection, Role, User } from "./types";
+
+export async function signupApi(input: { name: string; email: string; password: string }): Promise<{ ok: boolean; error?: string; user?: User }> {
+  const res = await fetch("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function updateUserApi(userId: string, patch: { department?: string; role?: Role }, user: User): Promise<void> {
+  const res = await fetch(`/api/users/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...patch, user }),
+  });
+  if (!res.ok) throw new Error("更新に失敗しました");
+}
+
+export async function resetUserPasswordApi(userId: string, user: User): Promise<void> {
+  const res = await fetch(`/api/users/${userId}/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user }),
+  });
+  if (!res.ok) throw new Error("リセットに失敗しました");
+}
 
 export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" } | { status: "rejected"; error: string };
 

@@ -11,6 +11,7 @@ import type {
   GuidelineSection,
   Inquiry,
   Page,
+  Role,
   Template,
   User,
 } from "../types";
@@ -194,6 +195,33 @@ export async function getUserRowByEmail(email: string): Promise<Row | undefined>
 
 export async function setUserPasswordHash(userId: string, passwordHash: string): Promise<void> {
   await updateRowById("Users", "id", userId, { passwordHash });
+}
+
+// 新規登録。部署は必ず未割り当て("")で作成し、本人の自己申告では部署を確定させない
+// (他部署の非公開ページを不正に閲覧できてしまうのを防ぐため)。管理者が後から割り当てる。
+export async function createUser(input: { name: string; email: string; passwordHash: string }): Promise<User> {
+  const id = await nextId("Users", "u");
+  await appendRow("Users", {
+    id,
+    name: input.name,
+    email: input.email,
+    passwordHash: input.passwordHash,
+    department: "",
+    role: "member",
+    createdAt: nowIso(),
+  });
+  return { id, name: input.name, email: input.email, department: "", role: "member" };
+}
+
+export async function updateUser(userId: string, patch: { department?: string; role?: Role }): Promise<void> {
+  const updates: Record<string, string> = {};
+  if (patch.department !== undefined) updates.department = patch.department;
+  if (patch.role !== undefined) updates.role = patch.role;
+  await updateRowById("Users", "id", userId, updates);
+}
+
+export async function resetUserPassword(userId: string): Promise<void> {
+  await updateRowById("Users", "id", userId, { passwordHash: "" });
 }
 
 export interface SubmitPageInput {

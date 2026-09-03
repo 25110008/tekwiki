@@ -119,6 +119,9 @@ function AdminLinks() {
       <Link href="/admin/inquiries" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
         お問い合わせ一覧
       </Link>
+      <Link href="/admin/users" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        ユーザー管理
+      </Link>
       <Link href="/admin/faq" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
         よくある質問の編集
       </Link>

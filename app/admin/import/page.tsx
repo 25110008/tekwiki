@@ -7,6 +7,8 @@ import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/app/providers";
 import { useAppData } from "@/app/data-provider";
 import { importPageApi, importZipApi, type ZipImportResult } from "@/lib/client-api";
+import { SERVER_PARSE_EXTENSIONS, TEXT_EXTENSIONS, fileExtension, splitTitleAndBody } from "@/lib/import-text";
+import type { User } from "@/lib/types";
 
 const SUPPORTED = [
   { label: "Markdown", ext: ".md,.markdown" },
@@ -16,19 +18,41 @@ const SUPPORTED = [
   { label: "Word (.docx)", ext: ".docx" },
   { label: "Webページ(URL)", ext: "" },
   { label: "保存済みHTMLファイル", ext: ".html,.htm" },
-  { label: "Markdown ZIP(複数一括)", ext: ".zip" },
+  { label: "ZIP(複数一括: 上記形式が混在可)", ext: ".zip" },
 ];
 
-const TEXT_EXTENSIONS = ["md", "markdown", "txt", "csv"];
-const SERVER_PARSE_EXTENSIONS = ["pdf", "docx", "html", "htm"];
+interface MultiFileItem {
+  fileName: string;
+  title: string;
+  body: string;
+  error?: string;
+}
 
-function splitTitleAndBody(fileName: string, content: string): { title: string; body: string } {
-  const lines = content.split(/\r?\n/);
-  if (lines[0]?.startsWith("# ")) {
-    return { title: lines[0].slice(2).trim(), body: lines.slice(1).join("\n").trim() };
+interface MultiImportResult {
+  created: { fileName: string; pageId: string; title: string }[];
+  failed: { fileName: string; error: string }[];
+}
+
+async function extractOne(file: File): Promise<MultiFileItem> {
+  const ext = fileExtension(file.name);
+  try {
+    if ((SERVER_PARSE_EXTENSIONS as readonly string[]).includes(ext)) {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/import/extract", { method: "POST", body: formData });
+      const json = (await res.json()) as { title?: string; body?: string; error?: string };
+      if (!res.ok || json.error) throw new Error(json.error ?? "解析に失敗しました");
+      return { fileName: file.name, title: json.title ?? "", body: json.body ?? "" };
+    }
+    if ((TEXT_EXTENSIONS as readonly string[]).includes(ext)) {
+      const content = await file.text();
+      const { title, body } = splitTitleAndBody(file.name, content);
+      return { fileName: file.name, title, body };
+    }
+    return { fileName: file.name, title: "", body: "", error: "対応していないファイル形式です" };
+  } catch (err) {
+    return { fileName: file.name, title: "", body: "", error: err instanceof Error ? err.message : "解析に失敗しました" };
   }
-  const nameWithoutExt = fileName.replace(/\.[^.]+$/, "");
-  return { title: nameWithoutExt, body: content.trim() };
 }
 
 export default function ImportPage() {
@@ -46,6 +70,10 @@ export default function ImportPage() {
   const [importing, setImporting] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [multiFiles, setMultiFiles] = useState<MultiFileItem[] | null>(null);
+  const [multiImporting, setMultiImporting] = useState(false);
+  const [multiResult, setMultiResult] = useState<MultiImportResult | null>(null);
 
   const [zipCategoryId, setZipCategoryId] = useState("all");
   const [zipImporting, setZipImporting] = useState(false);
@@ -68,13 +96,10 @@ export default function ImportPage() {
     );
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError(null);
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  async function processSingleFile(file: File) {
+    const ext = fileExtension(file.name);
 
-    if (SERVER_PARSE_EXTENSIONS.includes(ext)) {
+    if ((SERVER_PARSE_EXTENSIONS as readonly string[]).includes(ext)) {
       setParsing(true);
       setSourceLabel(file.name);
       try {
@@ -94,7 +119,7 @@ export default function ImportPage() {
       return;
     }
 
-    if (!TEXT_EXTENSIONS.includes(ext)) {
+    if (!(TEXT_EXTENSIONS as readonly string[]).includes(ext)) {
       setError("対応していないファイル形式です");
       return;
     }
@@ -109,6 +134,28 @@ export default function ImportPage() {
     };
     reader.onerror = () => setError("ファイルの読み込みに失敗しました");
     reader.readAsText(file, "utf-8");
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    setError(null);
+    setMultiFiles(null);
+    setMultiResult(null);
+    setSourceLabel(null);
+
+    if (files.length === 1) {
+      await processSingleFile(files[0]);
+      return;
+    }
+
+    setParsing(true);
+    const results: MultiFileItem[] = [];
+    for (const file of files) {
+      results.push(await extractOne(file));
+    }
+    setMultiFiles(results);
+    setParsing(false);
   }
 
   async function handleUrlImport() {
@@ -147,6 +194,30 @@ export default function ImportPage() {
     }
   }
 
+  async function handleMultiImport() {
+    if (!user || !multiFiles || multiImporting) return;
+    setMultiImporting(true);
+    const created: MultiImportResult["created"] = [];
+    const failed: MultiImportResult["failed"] = [];
+    for (const item of multiFiles) {
+      if (item.error || !item.body.trim()) {
+        failed.push({ fileName: item.fileName, error: item.error ?? "本文が空です" });
+        continue;
+      }
+      try {
+        const result = await importPageApi({ categoryId, title: item.title.trim() || item.fileName, body: item.body.trim() }, user as User);
+        created.push({ fileName: item.fileName, pageId: result.pageId, title: item.title });
+      } catch {
+        failed.push({ fileName: item.fileName, error: "作成に失敗しました" });
+      }
+    }
+    setMultiResult({ created, failed });
+    setMultiFiles(null);
+    setMultiImporting(false);
+    await refresh();
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
   async function handleZipChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -181,6 +252,8 @@ export default function ImportPage() {
         ConfluenceやNotionは専用フォーマットに未対応ですが、社外に公開されているページであれば「Webページから取り込む」欄にURLを貼り付けることで取り込めます。
         <br />
         ログインが必要な社内限定ページは、そのページを開いた状態でブラウザの「名前を付けて保存(ウェブページ・HTMLのみ)」で保存し、そのファイルを下の「またはファイルを選択」からアップロードしてください。
+        <br />
+        ファイルは複数まとめて選択することもできます(その場合、内容のプレビュー編集はできず、変換した内容のままページを作成します)。
       </p>
 
       <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">Webページから取り込む</div>
@@ -203,14 +276,18 @@ export default function ImportPage() {
         </button>
       </div>
 
-      <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">またはファイルを選択</div>
+      <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">またはファイルを選択(複数選択可)</div>
       <div
         onClick={() => fileRef.current?.click()}
         className="border border-dashed border-border rounded-s px-4 py-8 text-center text-ink-faint text-[0.85rem] bg-surface-2 max-w-[560px] cursor-pointer hover:border-accent"
       >
-        {parsing ? "解析中..." : sourceLabel ? `選択中: ${sourceLabel}` : "クリックしてファイルを選択(Markdown / テキスト / CSV / PDF / Word / 保存済みHTML)"}
+        {parsing
+          ? "解析中..."
+          : sourceLabel
+            ? `選択中: ${sourceLabel}`
+            : "クリックしてファイルを選択(Markdown / テキスト / CSV / PDF / Word / 保存済みHTML、複数選択可)"}
       </div>
-      <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.csv,.pdf,.docx,.html,.htm" onChange={handleFileChange} className="hidden" />
+      <input ref={fileRef} type="file" multiple accept=".md,.markdown,.txt,.csv,.pdf,.docx,.html,.htm" onChange={handleFileChange} className="hidden" />
 
       {error && <div className="bg-danger-soft text-danger border border-danger rounded-s px-4 py-2.5 text-sm mt-4 max-w-[560px]">{error}</div>}
 
@@ -249,10 +326,73 @@ export default function ImportPage() {
         </div>
       )}
 
+      {multiFiles && !parsing && (
+        <div className="mt-6 max-w-[68ch]">
+          <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">
+            {multiFiles.length}件のファイルを変換しました(プレビュー編集なしで一括作成します)
+          </div>
+          <label className="flex flex-col gap-1.5 text-sm mb-3">
+            <span className="font-medium">追加先カテゴリ</span>
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="border border-border rounded-s px-3 py-2 text-sm bg-surface-1 max-w-[280px]">
+              {data.categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ul className="flex flex-col gap-1 mb-4">
+            {multiFiles.map((item) => (
+              <li key={item.fileName} className={`text-[0.82rem] ${item.error ? "text-danger" : ""}`}>
+                {item.fileName}
+                {item.error ? `: ${item.error}` : ` → ${item.title || "(タイトル未設定)"}`}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={handleMultiImport}
+            disabled={multiImporting}
+            className="bg-accent text-white rounded-s px-4 py-2 text-sm font-medium hover:bg-accent-strong disabled:opacity-60"
+          >
+            {multiImporting ? "作成中..." : `この内容で${multiFiles.filter((f) => !f.error).length}件のページを作成`}
+          </button>
+        </div>
+      )}
+
+      {multiResult && (
+        <div className="mt-6 max-w-[68ch]">
+          <div className="text-[0.85rem] mb-2">
+            <span className="text-accent-strong font-medium">{multiResult.created.length}件</span> 作成しました
+            {multiResult.failed.length > 0 && <span className="text-danger">(失敗 {multiResult.failed.length}件)</span>}
+          </div>
+          {multiResult.created.length > 0 && (
+            <ul className="flex flex-col gap-1 mb-3">
+              {multiResult.created.map((c) => (
+                <li key={c.pageId} className="text-[0.82rem]">
+                  <Link href={`/pages/${c.pageId}`} className="text-accent-strong hover:underline">
+                    {c.title}
+                  </Link>
+                  <span className="text-ink-faint"> ({c.fileName})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {multiResult.failed.length > 0 && (
+            <ul className="flex flex-col gap-1">
+              {multiResult.failed.map((f) => (
+                <li key={f.fileName} className="text-[0.82rem] text-danger">
+                  {f.fileName}: {f.error}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <div className="border-t border-border mt-10 pt-8">
-        <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">Markdown ZIPを一括インポート</div>
+        <div className="text-[0.78rem] uppercase tracking-wide text-ink-faint mb-2">ZIPを一括インポート</div>
         <p className="text-ink-faint text-[0.82rem] mb-3 max-w-[60ch]">
-          複数の.mdファイルをまとめたZIPファイルから、1ファイルにつき1ページをまとめて作成します。プレビュー編集はできないため、内容は作成後に個別のページ編集画面で調整してください。
+          Markdown/テキスト/CSV/PDF/Word/HTMLが混在したZIPファイルから、1ファイルにつき1ページをまとめて作成します。フォルダ分けされている場合、フォルダ名のページが自動作成され、中のファイルはその子ページになります(3階層を超える分は3階層目にまとめます)。プレビュー編集はできないため、内容は作成後に個別のページ編集画面で調整してください。
         </p>
         <div className="flex items-center gap-2 max-w-[560px] mb-3">
           <label className="flex flex-col gap-1.5 text-sm">
@@ -290,6 +430,7 @@ export default function ImportPage() {
               <ul className="flex flex-col gap-1 mb-3">
                 {zipResult.created.map((c) => (
                   <li key={c.pageId} className="text-[0.82rem]">
+                    {c.type === "folder" && <span className="text-ink-faint">📁 </span>}
                     <Link href={`/pages/${c.pageId}`} className="text-accent-strong hover:underline">
                       {c.title}
                     </Link>

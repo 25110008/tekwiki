@@ -141,7 +141,7 @@ export async function askChatApi(question: string): Promise<ChatAnswer> {
 }
 
 export interface ZipImportResult {
-  created: { fileName: string; pageId: string; title: string }[];
+  created: { fileName: string; pageId: string; title: string; type: "page" | "folder" }[];
   failed: { fileName: string; error: string }[];
 }
 

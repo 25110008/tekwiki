@@ -1,18 +1,41 @@
 import { NextResponse } from "next/server";
 import JSZip from "jszip";
-import { importPage } from "@/lib/server/repo";
+import { importPage, MAX_PAGE_LEVEL } from "@/lib/server/repo";
+import { convertServerParsedFile } from "@/lib/server/import-convert";
+import { IMPORTABLE_EXTENSIONS, SERVER_PARSE_EXTENSIONS, TEXT_EXTENSIONS, fileExtension, splitTitleAndBody } from "@/lib/import-text";
 import type { User } from "@/lib/types";
 
-function splitTitleAndBody(fileName: string, content: string): { title: string; body: string } {
-  const lines = content.split(/\r?\n/);
-  if (lines[0]?.startsWith("# ")) {
-    return { title: lines[0].slice(2).trim(), body: lines.slice(1).join("\n").trim() };
-  }
-  const nameWithoutExt = fileName.replace(/\.[^.]+$/, "");
-  return { title: nameWithoutExt, body: content.trim() };
-}
+// フォルダ階層をページの親子関係に変換する際、ページの3階層制限(MAX_PAGE_LEVEL)を超える分はまとめて
+// 最深階層のフォルダページの下に配置する(それより深いフォルダ名は使わない)。
+const MAX_FOLDER_DEPTH = MAX_PAGE_LEVEL; // フォルダページとして作成するのはこの階層数まで
 
-const MARKDOWN_EXTENSIONS = ["md", "markdown"];
+async function ensureFolderPage(
+  folders: string[],
+  categoryId: string,
+  user: User,
+  folderPageIds: Map<string, string>
+): Promise<string | null> {
+  let parentId: string | null = null;
+  const depth = Math.min(folders.length, MAX_FOLDER_DEPTH);
+  for (let i = 0; i < depth; i++) {
+    const key = folders.slice(0, i + 1).join("/");
+    let pageId = folderPageIds.get(key);
+    if (!pageId) {
+      pageId = await importPage(
+        {
+          categoryId,
+          title: folders[i],
+          body: `インポート時に自動作成されたフォルダページです。「${folders[i]}」以下のページ一覧です。`,
+          parentId,
+        },
+        user
+      );
+      folderPageIds.set(key, pageId);
+    }
+    parentId = pageId;
+  }
+  return parentId;
+}
 
 export async function POST(request: Request) {
   const formData = await request.formData();
@@ -35,29 +58,57 @@ export async function POST(request: Request) {
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     const entries = Object.values(zip.files).filter((f) => {
       if (f.dir) return false;
-      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      const ext = fileExtension(f.name);
       const baseName = f.name.split("/").pop() ?? f.name;
-      return MARKDOWN_EXTENSIONS.includes(ext) && !baseName.startsWith(".");
+      return (IMPORTABLE_EXTENSIONS as readonly string[]).includes(ext) && !baseName.startsWith(".");
     });
 
     if (entries.length === 0) {
-      return NextResponse.json({ error: "ZIP内にMarkdownファイル(.md)が見つかりませんでした" }, { status: 422 });
+      return NextResponse.json(
+        { error: "ZIP内に対応形式のファイル(Markdown/テキスト/CSV/PDF/Word/HTML)が見つかりませんでした" },
+        { status: 422 }
+      );
     }
 
-    const created: { fileName: string; pageId: string; title: string }[] = [];
+    const created: { fileName: string; pageId: string; title: string; type: "page" | "folder" }[] = [];
     const failed: { fileName: string; error: string }[] = [];
+    const folderPageIds = new Map<string, string>();
 
     for (const entry of entries) {
+      const baseName = entry.name.split("/").pop() ?? entry.name;
+      const folders = entry.name.split("/").slice(0, -1).filter(Boolean);
+      const ext = fileExtension(baseName);
+
       try {
-        const content = await entry.async("string");
-        const baseName = entry.name.split("/").pop() ?? entry.name;
-        const { title, body } = splitTitleAndBody(baseName, content);
+        let title: string;
+        let body: string;
+        if ((TEXT_EXTENSIONS as readonly string[]).includes(ext)) {
+          const content = await entry.async("string");
+          ({ title, body } = splitTitleAndBody(baseName, content));
+        } else if ((SERVER_PARSE_EXTENSIONS as readonly string[]).includes(ext)) {
+          const bytes = await entry.async("uint8array");
+          ({ title, body } = await convertServerParsedFile(baseName, ext, bytes));
+        } else {
+          continue;
+        }
+
         if (!body.trim()) {
           failed.push({ fileName: entry.name, error: "本文が空です" });
           continue;
         }
-        const pageId = await importPage({ categoryId, title, body }, user);
-        created.push({ fileName: entry.name, pageId, title });
+
+        const parentId = await ensureFolderPage(folders, categoryId, user, folderPageIds);
+        // フォルダページ作成もcreated一覧に含めたいので、初出のフォルダはここで記録する
+        for (let i = 0; i < Math.min(folders.length, MAX_FOLDER_DEPTH); i++) {
+          const key = folders.slice(0, i + 1).join("/");
+          const pageId = folderPageIds.get(key);
+          if (pageId && !created.some((c) => c.pageId === pageId)) {
+            created.push({ fileName: `${key}/`, pageId, title: folders[i], type: "folder" });
+          }
+        }
+
+        const pageId = await importPage({ categoryId, title, body, parentId }, user);
+        created.push({ fileName: entry.name, pageId, title, type: "page" });
       } catch (err) {
         failed.push({ fileName: entry.name, error: err instanceof Error ? err.message : "変換に失敗しました" });
       }

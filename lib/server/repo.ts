@@ -252,7 +252,7 @@ export interface SubmitPageInput {
 
 export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" } | { status: "rejected"; error: string };
 
-const MAX_PAGE_LEVEL = 2; // 0-indexed。0=最上位、1=子、2=孫(3階層まで許可)
+export const MAX_PAGE_LEVEL = 2; // 0-indexed。0=最上位、1=子、2=孫(3階層まで許可)
 
 interface ParentRow {
   parentId: string | null;
@@ -465,6 +465,7 @@ export interface CreatedFromImport {
   categoryId: string;
   title: string;
   body: string;
+  parentId?: string | null;
 }
 
 export async function importPage(input: CreatedFromImport, user: User): Promise<string> {
@@ -472,9 +473,9 @@ export async function importPage(input: CreatedFromImport, user: User): Promise<
   const id = await nextId("pages", "p");
   await db
     .prepare(
-      `INSERT INTO pages (id, category_id, parent_id, title, tags, is_private, body, updated_by, updated_at, archived, created_at) VALUES (?, ?, NULL, ?, '', 0, ?, ?, ?, 0, ?)`
+      `INSERT INTO pages (id, category_id, parent_id, title, tags, is_private, body, updated_by, updated_at, archived, created_at) VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, 0, ?)`
     )
-    .bind(id, input.categoryId, input.title, input.body, user.name, jstLabel(), nowIso())
+    .bind(id, input.categoryId, input.parentId ?? null, input.title, input.body, user.name, jstLabel(), nowIso())
     .run();
   await db
     .prepare(`INSERT INTO history (id, page_id, edited_by, edited_at, summary, body_snapshot) VALUES (?, ?, ?, ?, 'データインポートで作成', ?)`)

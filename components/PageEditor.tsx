@@ -172,7 +172,7 @@ export function PageEditor({
 
   function handleCancel() {
     if (pageId) router.push(`/pages/${pageId}`);
-    else router.push("/");
+    else router.push(`/?cat=${categoryId}`);
   }
 
   async function handleSubmit() {
@@ -189,7 +189,7 @@ export function PageEditor({
       clearDraft(key);
       await refresh();
       if (result.status === "pending") {
-        router.push(pageId ? `/pages/${pageId}` : "/");
+        router.push(pageId ? `/pages/${pageId}` : `/?cat=${categoryId}`);
       } else {
         router.push(`/pages/${result.pageId}`);
       }

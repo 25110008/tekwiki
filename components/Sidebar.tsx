@@ -48,6 +48,11 @@ function CategoryTree() {
   const activeCat = searchParams.get("cat") ?? "all";
 
   const currentPage = pathname.startsWith("/pages/") ? pages.find((p) => p.id === pathname.split("/")[2]) : null;
+  // 新規ページ作成画面(/pages/new, /pages/new/edit)はページIDがまだ無く上のcurrentPage判定に
+  // 引っかからないため、代わりにURLの?cat=から作成先カテゴリを読み取る(サイドバーの展開状態が
+  // 崩れて無関係なカテゴリに戻って見えてしまうのを防ぐ)。
+  const isNewPageRoute = pathname === "/pages/new" || pathname.startsWith("/pages/new/");
+  const newPageCategoryId = isNewPageRoute ? searchParams.get("cat") : null;
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -55,7 +60,7 @@ function CategoryTree() {
       {categories.map((c) => {
         const count = pages.filter((p) => p.categoryId === c.id && !p.archived && canView(p, user)).length;
         const isActiveCat = pathname === "/" && activeCat === c.id;
-        const expanded = isActiveCat || currentPage?.categoryId === c.id;
+        const expanded = isActiveCat || currentPage?.categoryId === c.id || newPageCategoryId === c.id;
         const topPages = expanded
           ? pages.filter((p) => p.categoryId === c.id && !p.parentId && !p.archived).filter((p) => canView(p, user))
           : [];

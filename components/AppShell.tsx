@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useAppData } from "@/app/data-provider";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, MobileOutline } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -40,6 +40,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex flex-col flex-1 min-w-0">
             <Topbar />
             <main className="p-7 md:p-8 flex-1">{children}</main>
+            <MobileOutline />
           </div>
         </>
       )}

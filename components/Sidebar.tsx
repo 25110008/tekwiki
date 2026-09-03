@@ -33,7 +33,9 @@ function OutlineNode({ page, depth, pages }: { page: Page; depth: number; pages:
   );
 }
 
-export function Sidebar() {
+// カテゴリ・ページの階層ツリー本体。デスクトップのサイドバーと、モバイル用の
+// ページ下部ツリー(MobileOutline)の両方から共有して使う。
+function CategoryTree() {
   const { user } = useAuth();
   const { data } = useAppData();
   const { categories, pages } = data;
@@ -44,77 +46,108 @@ export function Sidebar() {
   const currentPage = pathname.startsWith("/pages/") ? pages.find((p) => p.id === pathname.split("/")[2]) : null;
 
   return (
+    <div className="flex flex-col gap-0.5">
+      <div className="text-[0.72rem] uppercase tracking-wide text-ink-faint px-2.5 mb-1.5">カテゴリ</div>
+      {categories.map((c) => {
+        const count = pages.filter((p) => p.categoryId === c.id && !p.archived && canView(p, user)).length;
+        const isActiveCat = pathname === "/" && activeCat === c.id;
+        const expanded = isActiveCat || currentPage?.categoryId === c.id;
+        const topPages = expanded
+          ? pages.filter((p) => p.categoryId === c.id && !p.parentId && !p.archived).filter((p) => canView(p, user))
+          : [];
+
+        return (
+          <div key={c.id} className={`flex flex-col rounded-m mb-1.5 ${expanded ? "bg-surface-3 p-0.5 pb-1.5" : ""}`}>
+            <Link
+              href={`/?cat=${c.id}`}
+              className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-s text-[0.88rem] hover:bg-surface-3 ${
+                isActiveCat ? "bg-accent-soft text-accent-strong font-medium shadow-[inset_3px_0_0_var(--color-accent)]" : "text-ink-muted"
+              }`}
+            >
+              <span>{c.label}</span>
+              <span className="font-code text-[0.74rem] text-ink-faint">{count}</span>
+            </Link>
+            {topPages.map((p) => (
+              <OutlineNode key={p.id} page={p} depth={0} pages={pages} />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HelpLinks() {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="text-[0.72rem] uppercase tracking-wide text-ink-faint px-2.5 mb-1.5">ヘルプ</div>
+      <Link href="/faq" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        よくある質問
+      </Link>
+      <Link href="/guidelines" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        編集ガイドライン
+      </Link>
+      <Link href="/contact" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        お問い合わせ
+      </Link>
+    </div>
+  );
+}
+
+function AdminLinks() {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="text-[0.72rem] uppercase tracking-wide text-ink-faint px-2.5 mb-1.5">管理</div>
+      <Link href="/admin/approvals" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        承認待ち一覧
+      </Link>
+      <Link href="/admin/inquiries" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        お問い合わせ一覧
+      </Link>
+      <Link href="/admin/faq" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        よくある質問の編集
+      </Link>
+      <Link href="/admin/guidelines" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        編集ガイドラインの編集
+      </Link>
+      <Link href="/admin/archive" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        アーカイブ済み
+      </Link>
+      <Link href="/admin/import" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
+        データインポート
+      </Link>
+    </div>
+  );
+}
+
+export function Sidebar() {
+  const { user } = useAuth();
+
+  return (
     <aside className="hidden md:flex flex-col gap-5 border-r border-border bg-surface-2 p-5 w-[260px] shrink-0">
       <Link href="/" className="flex items-center gap-2.5 px-1.5">
         <BrandMark size={30} />
         <span className="font-heading font-semibold text-[1.05rem]">テクWiki</span>
       </Link>
 
-      <div className="flex flex-col gap-0.5">
-        <div className="text-[0.72rem] uppercase tracking-wide text-ink-faint px-2.5 mb-1.5">カテゴリ</div>
-        {categories.map((c) => {
-          const count = pages.filter((p) => p.categoryId === c.id && !p.archived && canView(p, user)).length;
-          const isActiveCat = pathname === "/" && activeCat === c.id;
-          const expanded = isActiveCat || currentPage?.categoryId === c.id;
-          const topPages = expanded
-            ? pages.filter((p) => p.categoryId === c.id && !p.parentId && !p.archived).filter((p) => canView(p, user))
-            : [];
-
-          return (
-            <div key={c.id} className={`flex flex-col rounded-m mb-1.5 ${expanded ? "bg-surface-3 p-0.5 pb-1.5" : ""}`}>
-              <Link
-                href={`/?cat=${c.id}`}
-                className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-s text-[0.88rem] hover:bg-surface-3 ${
-                  isActiveCat ? "bg-accent-soft text-accent-strong font-medium shadow-[inset_3px_0_0_var(--color-accent)]" : "text-ink-muted"
-                }`}
-              >
-                <span>{c.label}</span>
-                <span className="font-code text-[0.74rem] text-ink-faint">{count}</span>
-              </Link>
-              {topPages.map((p) => (
-                <OutlineNode key={p.id} page={p} depth={0} pages={pages} />
-              ))}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-col gap-0.5">
-        <div className="text-[0.72rem] uppercase tracking-wide text-ink-faint px-2.5 mb-1.5">ヘルプ</div>
-        <Link href="/faq" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-          よくある質問
-        </Link>
-        <Link href="/guidelines" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-          編集ガイドライン
-        </Link>
-        <Link href="/contact" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-          お問い合わせ
-        </Link>
-      </div>
-
-      {user?.role === "admin" && (
-        <div className="flex flex-col gap-0.5">
-          <div className="text-[0.72rem] uppercase tracking-wide text-ink-faint px-2.5 mb-1.5">管理</div>
-          <Link href="/admin/approvals" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-            承認待ち一覧
-          </Link>
-          <Link href="/admin/inquiries" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-            お問い合わせ一覧
-          </Link>
-          <Link href="/admin/faq" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-            よくある質問の編集
-          </Link>
-          <Link href="/admin/guidelines" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-            編集ガイドラインの編集
-          </Link>
-          <Link href="/admin/archive" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-            アーカイブ済み
-          </Link>
-          <Link href="/admin/import" className="px-2.5 py-2 rounded-s text-[0.88rem] text-ink-muted hover:bg-surface-3">
-            データインポート
-          </Link>
-        </div>
-      )}
+      <CategoryTree />
+      <HelpLinks />
+      {user?.role === "admin" && <AdminLinks />}
     </aside>
+  );
+}
+
+// 画面幅が狭い場合、固定サイドバーの代わりにメインコンテンツの続きとして
+// ページ下部に表示する階層ツリー。固定パネルにはせず、通常のスクロールで
+// 到達する形にする(要件定義書2.7節)。
+export function MobileOutline() {
+  const { user } = useAuth();
+
+  return (
+    <div className="md:hidden border-t border-border bg-surface-2 -mx-7 mt-8 px-7 py-6 flex flex-col gap-6">
+      <CategoryTree />
+      <HelpLinks />
+      {user?.role === "admin" && <AdminLinks />}
+    </div>
   );
 }

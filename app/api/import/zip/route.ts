@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import JSZip from "jszip";
-import { importPage, MAX_PAGE_LEVEL } from "@/lib/server/repo";
+import { getCategories, importPage, MAX_PAGE_LEVEL } from "@/lib/server/repo";
 import { convertServerParsedFile } from "@/lib/server/import-convert";
 import { IMPORTABLE_EXTENSIONS, SERVER_PARSE_EXTENSIONS, TEXT_EXTENSIONS, fileExtension, splitTitleAndBody } from "@/lib/import-text";
 import type { User } from "@/lib/types";
@@ -25,7 +25,7 @@ async function ensureFolderPage(
         {
           categoryId,
           title: folders[i],
-          body: `インポート時に自動作成されたフォルダページです。「${folders[i]}」以下のページ一覧です。`,
+          body: `インポート時のフォルダ構成から自動作成されたページです。配下のファイルは「子ページ」欄をご覧ください。`,
           parentId,
         },
         user
@@ -54,6 +54,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "権限がありません" }, { status: 403 });
   }
 
+  const categories = await getCategories();
+  const targetCategoryLabel = categories.find((c) => c.id === categoryId)?.label;
+
   try {
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     const entries = Object.values(zip.files).filter((f) => {
@@ -76,7 +79,14 @@ export async function POST(request: Request) {
 
     for (const entry of entries) {
       const baseName = entry.name.split("/").pop() ?? entry.name;
-      const folders = entry.name.split("/").slice(0, -1).filter(Boolean);
+      let folders = entry.name.split("/").slice(0, -1).filter(Boolean);
+      // ZIP直下のフォルダ名がインポート先カテゴリ名と同じ場合(例:「営業部」カテゴリに
+      // 「営業部/」フォルダ)、カテゴリ自体がその区分を表しているため、同名のフォルダページを
+      // 二重に作ると「営業部の中の営業部」のように紛らわしくなる。その場合はこの階層を
+      // 読み飛ばし、直下のファイルをカテゴリ直下のページとして扱う。
+      if (targetCategoryLabel && folders[0] === targetCategoryLabel) {
+        folders = folders.slice(1);
+      }
       const ext = fileExtension(baseName);
 
       try {

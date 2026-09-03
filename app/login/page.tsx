@@ -25,65 +25,58 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen md:grid-cols-[1.1fr_1fr] bg-bg">
-      <div className="hidden md:flex flex-col justify-center gap-5 p-16 border-r border-border bg-surface-2">
-        <BrandMark size={44} />
-        <h1 className="text-4xl max-w-[8em]">ひとつにまとまる、社内の知識。</h1>
-        <p className="text-ink-muted max-w-[42ch] text-[0.98rem]">
-          点在していた複数のWikiをテクWikiに集約。記事を探すではなく、質問して引き出せる場所に。
-        </p>
-        <ul className="flex flex-col gap-2.5 mt-2 text-[0.92rem] text-ink-muted">
-          <li>・全社公開ページを対象にしたAIチャット回答(非公開情報は対象外)</li>
-          <li>・編集はすぐに反映、承認は一部の重要カテゴリのみ</li>
-          <li>・部署ごとの固定カテゴリで整理されたページ</li>
-        </ul>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-8 bg-bg px-6 py-12">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <BrandMark size={56} />
+        <div>
+          <div className="font-heading font-semibold text-[1.4rem] leading-tight">テクWiki</div>
+          <p className="text-ink-faint text-[0.9rem] mt-1">社内の知識を、ひとつに。</p>
+        </div>
       </div>
 
-      <div className="flex items-center justify-center p-10">
-        <form onSubmit={handleSubmit} className="w-full max-w-[360px]">
-          <h2 className="text-2xl mb-1.5">ログイン</h2>
-          <p className="text-ink-muted text-sm mb-7">社内メールアドレスでサインインしてください</p>
+      <form onSubmit={handleSubmit} className="w-full max-w-[360px] bg-surface border border-border rounded-m shadow-sm p-8">
+        <h2 className="text-xl mb-1.5">ログイン</h2>
+        <p className="text-ink-muted text-sm mb-7">社内メールアドレスでサインインしてください</p>
 
-          {error && (
-            <div className="bg-danger-soft text-danger border border-danger rounded-s px-3 py-2.5 text-sm mb-4">
-              {error}
-            </div>
-          )}
-
-          <label className="block mb-4">
-            <span className="block text-[0.82rem] text-ink-muted mb-1.5">メールアドレス</span>
-            <input
-              type="text"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={`you@${ORG_DOMAIN}`}
-              className="w-full px-3 py-2.5 border border-border rounded-s bg-surface text-ink focus:border-accent focus:outline-none"
-            />
-          </label>
-
-          <label className="block mb-4">
-            <span className="block text-[0.82rem] text-ink-muted mb-1.5">パスワード</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="パスワード"
-              className="w-full px-3 py-2.5 border border-border rounded-s bg-surface text-ink focus:border-accent focus:outline-none"
-            />
-          </label>
-
-          <button
-            type="submit"
-            className="w-full py-2.5 rounded-s bg-accent text-white font-medium hover:bg-accent-strong transition-colors"
-          >
-            ログイン
-          </button>
-
-          <div className="mt-5 p-3.5 bg-surface-2 border border-dashed border-border rounded-s text-[0.8rem] text-ink-muted">
-            初めてログインする際に入力したパスワードが、以降のログインに使うパスワードとして登録されます。次回以降は同じパスワードを入力してください。
+        {error && (
+          <div className="bg-danger-soft text-danger border border-danger rounded-s px-3 py-2.5 text-sm mb-4">
+            {error}
           </div>
-        </form>
-      </div>
+        )}
+
+        <label className="block mb-4">
+          <span className="block text-[0.82rem] text-ink-muted mb-1.5">メールアドレス</span>
+          <input
+            type="text"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={`you@${ORG_DOMAIN}`}
+            className="w-full px-3 py-2.5 border border-border rounded-s bg-surface text-ink focus:border-accent focus:outline-none"
+          />
+        </label>
+
+        <label className="block mb-4">
+          <span className="block text-[0.82rem] text-ink-muted mb-1.5">パスワード</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="パスワード"
+            className="w-full px-3 py-2.5 border border-border rounded-s bg-surface text-ink focus:border-accent focus:outline-none"
+          />
+        </label>
+
+        <button
+          type="submit"
+          className="w-full py-2.5 rounded-s bg-accent text-white font-medium hover:bg-accent-strong transition-colors"
+        >
+          ログイン
+        </button>
+
+        <div className="mt-5 p-3.5 bg-surface-2 border border-dashed border-border rounded-s text-[0.8rem] text-ink-muted">
+          初めてログインする際に入力したパスワードが、以降のログインに使うパスワードとして登録されます。次回以降は同じパスワードを入力してください。
+        </div>
+      </form>
     </div>
   );
 }

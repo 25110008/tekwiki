@@ -24,7 +24,11 @@ function OutlineNode({ page, depth, pages }: { page: Page; depth: number; pages:
         style={{ paddingLeft: 10 + depth * 18 }}
       >
         {depth > 0 && <span className="text-ink-faint text-[0.8rem]">└</span>}
-        {page.title}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-ink-faint">
+          <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" strokeLinejoin="round" />
+          <path d="M14 3v5h5" strokeLinejoin="round" />
+        </svg>
+        <span className="truncate">{page.title}</span>
       </Link>
       {kids.map((k) => (
         <OutlineNode key={k.id} page={k} depth={depth + 1} pages={pages} />
@@ -60,11 +64,22 @@ function CategoryTree() {
           <div key={c.id} className={`flex flex-col rounded-m mb-1.5 ${expanded ? "bg-surface-3 p-0.5 pb-1.5" : ""}`}>
             <Link
               href={`/?cat=${c.id}`}
-              className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-s text-[0.88rem] hover:bg-surface-3 ${
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-s text-[0.88rem] hover:bg-surface-3 ${
                 isActiveCat ? "bg-accent-soft text-accent-strong font-medium shadow-[inset_3px_0_0_var(--color-accent)]" : "text-ink-muted"
               }`}
             >
-              <span>{c.label}</span>
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                className={`shrink-0 text-ink-faint transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+              >
+                <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="flex-1">{c.label}</span>
               <span className="font-code text-[0.74rem] text-ink-faint">{count}</span>
             </Link>
             {topPages.map((p) => (

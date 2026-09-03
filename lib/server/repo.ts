@@ -206,7 +206,22 @@ export interface SubmitPageInput {
   body: string;
 }
 
-export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" };
+export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" } | { status: "rejected"; error: string };
+
+const MAX_PAGE_LEVEL = 2; // 0-indexed。0=最上位、1=子、2=孫(3階層まで許可)
+
+function getPageLevel(pageId: string, rows: Row[]): number {
+  const map = new Map(rows.map((r) => [r.id, r]));
+  let level = 0;
+  let current: string | undefined = pageId;
+  while (current) {
+    const page = map.get(current);
+    if (!page || !page.parentId) break;
+    level++;
+    current = page.parentId;
+  }
+  return level;
+}
 
 async function nextId(sheetName: string, prefix: string): Promise<string> {
   const rows = await readSheet(sheetName);
@@ -256,6 +271,14 @@ async function syncPageEmbedding(pageId: string, isPrivate: boolean, isArchived:
 
 export async function submitPage(input: SubmitPageInput, user: User): Promise<SubmitResult> {
   const title = input.title.trim() || "無題のページ";
+
+  if (input.parentId) {
+    const rows = await readSheet("Pages");
+    if (getPageLevel(input.parentId, rows) >= MAX_PAGE_LEVEL) {
+      return { status: "rejected", error: "3階層を超える子ページは作成できません" };
+    }
+  }
+
   const needsApproval = await requiresApproval(input.categoryId);
 
   if (needsApproval) {

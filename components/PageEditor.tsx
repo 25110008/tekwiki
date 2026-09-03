@@ -181,6 +181,11 @@ export function PageEditor({
     setSubmitError(null);
     try {
       const result = await submitPageApi({ pageId, categoryId, parentId, title, tags, private: isPrivate, body }, user);
+      if (result.status === "rejected") {
+        setSubmitError(result.error);
+        setSubmitting(false);
+        return;
+      }
       clearDraft(key);
       await refresh();
       if (result.status === "pending") {

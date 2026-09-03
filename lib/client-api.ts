@@ -2,7 +2,7 @@
 import type { DraftInput } from "./store";
 import type { FaqItem, GuidelineSection, User } from "./types";
 
-export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" };
+export type SubmitResult = { status: "published"; pageId: string } | { status: "pending" } | { status: "rejected"; error: string };
 
 export async function submitPageApi(input: DraftInput, user: User): Promise<SubmitResult> {
   const res = await fetch("/api/pages", {
@@ -10,8 +10,9 @@ export async function submitPageApi(input: DraftInput, user: User): Promise<Subm
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...input, user }),
   });
-  if (!res.ok) throw new Error("保存に失敗しました");
-  return res.json();
+  const json = (await res.json().catch(() => null)) as SubmitResult | null;
+  if (!json) throw new Error("保存に失敗しました");
+  return json;
 }
 
 export async function approveApprovalApi(id: string, reviewer: User): Promise<void> {

@@ -27,5 +27,8 @@ export async function POST(request: Request) {
     body.user
   );
 
+  if (result.status === "rejected") {
+    return NextResponse.json(result, { status: 400 });
+  }
   return NextResponse.json(result);
 }
